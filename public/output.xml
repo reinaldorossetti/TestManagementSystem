@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 6.1 (Python 3.10.5 on linux)" generated="20260617 19:57:38.291" rpa="false" schemaversion="4">
+  <suite id="S1" name="Centro de Execução QA TMS BDD Suite" source="./tests">
+    <test id="S1-T1" name="CT01 Autenticação Positiva com Senha Válida" line="10">
+      <kw name="Dado que o usuário está no portal TMS" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:38.302" endtime="20260617 19:57:38.450"/>
+      </kw>
+      <kw name="Quando insere credenciais válidas e submete" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:38.450" endtime="20260617 19:57:38.690"/>
+      </kw>
+      <kw name="Então o sistema concede acesso e emite token JWT" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:38.690" endtime="20260617 19:57:38.842"/>
+      </kw>
+      <doc>Verifica a integridade do fluxo de autenticação feliz.</doc>
+      <tag>@regression</tag>
+      <tag>@auth</tag>
+      <tag>@CT01</tag>
+      <status status="PASS" starttime="20260617 19:57:38.298" endtime="20260617 19:57:38.843"/>
+    </test>
+    <test id="S1-T2" name="CT02 Autenticação Negativa por Excessivas Tentativas Incorretas" line="18">
+      <kw name="Dado que o usuário está bloqueado temporariamente" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:38.848" endtime="20260617 19:57:39.002"/>
+      </kw>
+      <kw name="Quando tenta efetuar múltiplos logins com falha" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:39.002" endtime="20260617 19:57:39.214"/>
+      </kw>
+      <kw name="Então uma mensagem de bloqueio é exibida em tela" library="AuthKeywords">
+        <status status="PASS" starttime="20260617 19:57:39.215" endtime="20260617 19:57:39.348"/>
+      </kw>
+      <doc>Garante bloqueio temporário seguro por brute force mitigation.</doc>
+      <tag>@regression</tag>
+      <tag>@auth</tag>
+      <tag>@security</tag>
+      <tag>@CT02</tag>
+      <status status="PASS" starttime="20260617 19:57:38.845" endtime="20260617 19:57:39.349"/>
+    </test>
+    <status status="PASS" starttime="20260617 19:57:38.292" endtime="20260617 19:57:39.351"/>
+  </suite>
+  <statistics>
+    <total>
+      <stat pass="2" fail="0" skip="0">All Tests</stat>
+    </total>
+    <tag>
+      <stat pass="2" fail="0" skip="0">@regression</stat>
+      <stat pass="2" fail="0" skip="0">@auth</stat>
+      <stat pass="1" fail="0" skip="0">@security</stat>
+    </tag>
+    <suite>
+      <stat pass="2" fail="0" skip="0" id="S1" name="Centro de Execução QA TMS BDD Suite">TMS BDD</stat>
+    </suite>
+  </statistics>
+  <errors>
+  </errors>
+</robot>

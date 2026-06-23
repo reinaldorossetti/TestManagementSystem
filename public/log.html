@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centro de Execução QA TMS — Robot Detailed Logging</title>
+    <style>
+        body {
+            background-color: #020617;
+            color: #cbd5e1;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            margin: 0;
+            padding: 30px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+        .header h1 {
+            color: #FF6600;
+            margin: 0;
+            font-size: 20px;
+            font-family: system-ui, sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+        }
+        .timestamp {
+            color: #64748b;
+            font-size: 11px;
+        }
+        .status-badge {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .tree-node {
+            margin-left: 20px;
+            border-left: 1px dashed #334155;
+            padding-left: 15px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+        .node-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .node-info:hover {
+            background: #1e293b;
+        }
+        .kw-type {
+            font-weight: bold;
+            color: #0284c7;
+            font-size: 11px;
+        }
+        .status-pass {
+            color: #10B981;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .log-messages {
+            background-color: #020617;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #94a3b8;
+            border-left: 3px solid #FF6600;
+        }
+        .keyword-args {
+            color: #64748b;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Robot Framework - Detalhamento das Keywords (log.html)</h1>
+                <span class="timestamp">Gerado em: 17/06/2026 às 19:57:45 UTC</span>
+            </div>
+            <div>
+                <span class="status-badge">SUITE STATUS: PASS</span>
+            </div>
+        </div>
+
+        <div class="tree-node" style="margin-left: 0;">
+            <div class="node-info" style="font-weight: bold; color: #f1f5f9; font-size: 14px;">
+                <span>📂</span>
+                <span>Suite: TMS BDD Feature Suite Executions</span>
+                <span class="status-pass">PASS</span>
+            </div>
+
+            <div class="tree-node">
+                <div class="node-info">
+                    <span>🎬</span>
+                    <span style="color: #e2e8f0; font-weight: bold;">Teste: CT01 Autenticação Positiva com Senha Válida</span>
+                    <span class="status-pass">PASS</span>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Dado que o usuário está no portal TMS</span>
+                        <span class="keyword-args">[ arg1=web_app_url ]</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: Browser.open_browser("https://portal.tms.com.br")<br>
+                        INFO: Encontrado o seletor login_form em 45ms
+                    </div>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Quando insere credenciais válidas e submete</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: Input text into ("#username", "auditor_qa_tms")<br>
+                        INFO: Input password into ("#password", "******")<br>
+                        INFO: Click element ("#btn_submit_login")
+                    </div>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Então o sistema concede acesso e emite token JWT</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: JWT Token detectado com sucesso no LocalStorage.<br>
+                        INFO: Usuário redirecionado para /dashboard.
+                    </div>
+                </div>
+            </div>
+
+            <div class="tree-node">
+                <div class="node-info">
+                    <span>🎬</span>
+                    <span style="color: #e2e8f0; font-weight: bold;">Teste: CT02 Autenticação Negativa por Excessivas Tentativas Incorretas</span>
+                    <span class="status-pass">PASS</span>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Dado que o usuário está bloqueado temporariamente</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: Database.check_user_status("auditor_qa_tms") =&gt; BLOCKED
+                    </div>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Quando tenta efetuar múltiplos logins com falha</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: Envio de requisição POST /api/v1/auth/login com payload incorreto.<br>
+                        INFO: Servidor retornou HTTP 423 Locked.
+                    </div>
+                </div>
+
+                <div class="tree-node">
+                    <div class="node-info">
+                        <span class="kw-type">KEYWORD</span>
+                        <span>Então uma mensagem de bloqueio é exibida em tela</span>
+                        <span class="status-pass">PASS</span>
+                    </div>
+                    <div class="log-messages">
+                        INFO: Seletor ("#error-banner") detectado com texto "Acesso bloqueado por 15 minutos".
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 35px; text-align: center; color: #475569; font-size: 11px;">
+            Robot Framework detailed test logs tree visualizer. Preserved in memory state.
+        </div>
+    </div>
+</body>
+</html>

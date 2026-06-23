@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centro de Execução QA TMS - Robot Framework Report</title>
+    <style>
+        body {
+            background-color: #020617;
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 40px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #1e293b;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #FF6600;
+            margin: 0;
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            text-transform: uppercase;
+        }
+        .badge-pass {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #10B981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-weight: bold;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .grid {
+            display: grid;
+            grid-template-cols: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #020617;
+            border: 1px solid #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+        }
+        .card-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+        }
+        .card-value {
+            font-size: 24px;
+            font-weight: 800;
+            margin-top: 8px;
+        }
+        .text-orange { color: #FF6600; }
+        .text-emerald { color: #10B981; }
+        .status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .status-table th {
+            text-align: left;
+            padding: 12px;
+            background: #020617;
+            border-bottom: 2px solid #1e293b;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .status-table td {
+            padding: 12px;
+            border-bottom: 1px solid #1e293b;
+        }
+        .status-text {
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 12px;
+            color: #475569;
+            border-top: 1px solid #1e293b;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Robot Framework - Relatório de Execução</h1>
+                <p style="margin: 5px 0 0; color: #94a3b8; font-size: 13px;">Suíte: TMS BDD Feature Suite</p>
+            </div>
+            <div>
+                <span class="badge-pass">🟢 PASSOU (100%)</span>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-label">Total de Cenários</div>
+                <div class="card-value">2</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Aprovados (PASS)</div>
+                <div class="card-value text-emerald">2</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Taxa de Sucesso</div>
+                <div class="card-value text-orange">100%</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Tempo de Execução</div>
+                <div class="card-value">1.04s</div>
+            </div>
+        </div>
+
+        <h3 style="color: #f1f5f9; font-size: 18px; margin-bottom: 15px;">Detalhes dos Cenários</h3>
+        <table class="status-table">
+            <thead>
+                <tr>
+                    <th>Caso de Teste ID</th>
+                    <th>Título do Cenário</th>
+                    <th>Mapeamento</th>
+                    <th>Duração</th>
+                    <th>Resultado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>CT01</td>
+                    <td>Autenticação Positiva com Senha Válida</td>
+                    <td>BDD Gherkin</td>
+                    <td>540ms</td>
+                    <td class="status-text text-emerald">PASS</td>
+                </tr>
+                <tr>
+                    <td>CT02</td>
+                    <td>Autenticação Negativa por Excessivas Tentativas Incorretas</td>
+                    <td>BDD Gherkin</td>
+                    <td>500ms</td>
+                    <td class="status-text text-emerald">PASS</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            Gerado automaticamente pelo Centro de Execução QA TMS — SQLite Relational Memory Mapper Integrator.
+        </div>
+    </div>
+</body>
+</html>

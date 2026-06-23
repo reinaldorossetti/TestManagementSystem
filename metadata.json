@@ -1,0 +1,6 @@
+{
+  "name": "TMS BDD Test Suite Selector",
+  "description": "Interactive Gherkin/BDD test suite explorer, code exporter, and visual run simulator for TMS checkout and store association flows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
