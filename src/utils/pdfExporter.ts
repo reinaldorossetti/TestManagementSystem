@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { DbTestCaseSphere } from './sqliteEngine';
+import { DbTestCaseSphere, DbExecution, DbTestCase, DbStepLog } from './sqliteEngine';
 import {
   getSeverityLevel,
   getCriticalityLevel,
@@ -9,6 +9,63 @@ import {
 } from './testCaseClassification';
 
 type RGB = [number, number, number];
+
+const A4_OPTIONS = { orientation: 'p', unit: 'mm', format: 'a4' } as const;
+
+/** Cross-version safe jsPDF instantiation (handles default/named export shapes). */
+const instantiateDoc = (): jsPDF => {
+  if (typeof jsPDF === 'function') return new jsPDF(A4_OPTIONS);
+  const maybe = jsPDF as unknown as { jsPDF?: new (o: typeof A4_OPTIONS) => jsPDF };
+  if (maybe && typeof maybe.jsPDF === 'function') return new maybe.jsPDF(A4_OPTIONS);
+  return new (jsPDF as unknown as new (o: typeof A4_OPTIONS) => jsPDF)(A4_OPTIONS);
+};
+
+const MONTHS_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+const MONTHS_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** Mirrors the on-screen duration formatting from the reports page. */
+const formatDurationPdf = (seconds: number): string => {
+  if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
+  if (seconds < 60) return `${seconds.toFixed(2)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rem = Math.round(seconds % 60);
+  return `${minutes}m ${rem}s`;
+};
+
+/** Mirrors the on-screen human-readable timestamp from the reports page. */
+const formatTimestampPdf = (raw: string, language: 'PT' | 'ENG'): string => {
+  try {
+    const [datePart, timePart] = raw.split(' ');
+    if (!datePart) return raw;
+    const [year, month, day] = datePart.split('-');
+    const months = language === 'PT' ? MONTHS_PT : MONTHS_EN;
+    const monthName = months[parseInt(month, 10) - 1] || month;
+    const time = timePart || '';
+    return language === 'PT'
+      ? `${day} de ${monthName} de ${year} às ${time}`
+      : `${monthName} ${day}, ${year} at ${time}`;
+  } catch {
+    return raw;
+  }
+};
+
+/** Derives the run title from the Robot command (feature tag = feature name). */
+const deriveTargetSpec = (command: string, t: (pt: string, en: string) => string): string => {
+  if (command.includes('-i ')) {
+    const tag = command.split('-i ')[1]?.split(' ')[0] || '';
+    if (tag) return `Feature: ${tag}`;
+  } else if (command.includes('--include ')) {
+    const tag = command.split('--include ')[1]?.split(' ')[0] || '';
+    if (tag) return `${t('Cenário Único', 'Single Scenario')}: ${tag}`;
+  }
+  return t('Suite Completa: cardmais.feature', 'Full Suite: cardmais.feature');
+};
 
 const SEVERITY_COLORS: Record<Severity, { bg: RGB; fg: RGB }> = {
   Critical: { bg: [30, 58, 138], fg: [191, 219, 254] },
@@ -50,16 +107,7 @@ export const handleExportTestCasesToPDF = (
   try {
     const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
 
-    let doc: jsPDF;
-    const options = { orientation: 'p', unit: 'mm', format: 'a4' } as const;
-    if (typeof jsPDF === 'function') {
-      doc = new jsPDF(options);
-    } else if (jsPDF && typeof (jsPDF as unknown as { jsPDF?: unknown }).jsPDF === 'function') {
-      const Constructor = (jsPDF as unknown as { jsPDF: new (o: typeof options) => jsPDF }).jsPDF;
-      doc = new Constructor(options);
-    } else {
-      doc = new (jsPDF as unknown as new (o: typeof options) => jsPDF)(options);
-    }
+    const doc = instantiateDoc();
 
     const pageWidth = 210;
     const pageHeight = 297;
@@ -419,5 +467,570 @@ export const handleExportTestCasesToPDF = (
     doc.save(fileName);
   } catch (err) {
     console.error('PDF Exporter runtime exception:', err);
+  }
+};
+
+/**
+ * Dark-theme, screen-accurate PDF exporter for a single execution report,
+ * mirroring the reports detail page: hero header (status badge + feature title +
+ * Robot command), success-rate donut gauge, KPI cards (Total/Failed/Broken/
+ * Passed/Skipped) and the grouped scenario/step tracer.
+ */
+export const handleExportExecutionReportToPDF = (
+  exec: DbExecution,
+  testCases: DbTestCase[],
+  steps: DbStepLog[],
+  language: 'PT' | 'ENG' = 'PT',
+) => {
+  try {
+    const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
+    const doc = instantiateDoc();
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const marginX = 10;
+    const contentWidth = pageWidth - marginX * 2;
+    let currentY = 15;
+
+    const fillPageBackground = () => {
+      doc.setFillColor(6, 8, 20);
+      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+    };
+
+    const drawHeaderFooter = () => {
+      doc.setFillColor(255, 102, 0);
+      doc.rect(0, 0, pageWidth, 1.2, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 102, 0);
+      doc.text('CENTRO TMS', marginX, 7.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text('/', marginX + 22, 7.5);
+      doc.setFillColor(16, 185, 129);
+      doc.ellipse(marginX + 26, 7.2, 1, 1, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(241, 245, 249);
+      doc.text(t('relatório de execução', 'execution report'), marginX + 29, 7.5);
+
+      const envW = 40;
+      doc.setFillColor(17, 24, 39);
+      doc.roundedRect(pageWidth - marginX - envW, 4.5, envW, 4.2, 1, 1, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text('Environment: ubuntu-latest', pageWidth - marginX - envW + 2, 7.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        t('CENTRO DE EXECUÇÃO QA TMS - RELATÓRIO DE EXECUÇÃO', 'QA TMS EXECUTION CENTER - EXECUTION REPORT'),
+        marginX,
+        pageHeight - 8,
+      );
+      doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth - marginX - 18, pageHeight - 8);
+    };
+
+    const checkPageBreak = (neededHeight: number) => {
+      if (currentY + neededHeight > pageHeight - 15) {
+        doc.addPage();
+        fillPageBackground();
+        drawHeaderFooter();
+        currentY = 15;
+      }
+    };
+
+    const addWrappedText = (
+      text: string,
+      x: number,
+      maxWidth: number,
+      fontSize: number,
+      color: RGB,
+      font: 'helvetica' | 'courier' = 'helvetica',
+      style: 'normal' | 'bold' = 'normal',
+      lineHeight = 4,
+    ) => {
+      doc.setFont(font, style);
+      doc.setFontSize(fontSize);
+      doc.setTextColor(color[0], color[1], color[2]);
+      const lines = doc.splitTextToSize(text || '-', maxWidth) as string[];
+      lines.forEach((line) => {
+        checkPageBreak(lineHeight + 2);
+        doc.text(line, x, currentY);
+        currentY += lineHeight;
+      });
+    };
+
+    const drawPill = (x: number, y: number, label: string, colors: { bg: RGB; fg: RGB }, fontSize = 6): number => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSize);
+      const w = doc.getTextWidth(label) + 5;
+      doc.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
+      doc.roundedRect(x, y, w, 4.5, 1, 1, 'F');
+      doc.setTextColor(colors.fg[0], colors.fg[1], colors.fg[2]);
+      doc.text(label, x + 2.5, y + 3.1);
+      return w;
+    };
+
+    /** Strokes a ring gauge filled proportionally to `pct` (clockwise from top). */
+    const drawDonutGauge = (cx: number, cy: number, r: number, pct: number) => {
+      const segments = 240;
+      doc.setLineWidth(3);
+      doc.setDrawColor(30, 41, 59);
+      doc.circle(cx, cy, r, 'S');
+
+      // Multi-segment ring: green (passed) -> red (failed) -> amber (skipped),
+      // mirroring the on-screen conic-gradient.
+      const drawArc = (startFrac: number, endFrac: number, color: RGB) => {
+        if (endFrac <= startFrac) return;
+        doc.setDrawColor(color[0], color[1], color[2]);
+        const s = Math.round(startFrac * segments);
+        const e = Math.round(endFrac * segments);
+        let prevX = cx + r * Math.cos(-Math.PI / 2 + (s / segments) * 2 * Math.PI);
+        let prevY = cy + r * Math.sin(-Math.PI / 2 + (s / segments) * 2 * Math.PI);
+        for (let i = s + 1; i <= e; i++) {
+          const ang = -Math.PI / 2 + (i / segments) * 2 * Math.PI;
+          const x = cx + r * Math.cos(ang);
+          const y = cy + r * Math.sin(ang);
+          doc.line(prevX, prevY, x, y);
+          prevX = x;
+          prevY = y;
+        }
+      };
+      if (total > 0) {
+        const pf = passed / total;
+        const ff = failed / total;
+        const sf = skipped / total;
+        drawArc(0, pf, [16, 185, 129]);
+        drawArc(pf, pf + ff, [239, 68, 68]);
+        drawArc(pf + ff, pf + ff + sf, [245, 158, 11]);
+      }
+
+      doc.setFillColor(17, 24, 39);
+      doc.circle(cx, cy, r - 2.6, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(241, 245, 249);
+      doc.text(`${pct.toFixed(1)}%`, cx, cy + 0.5, { align: 'center' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(t('SUCESSO', 'SUCCESS'), cx, cy + 4.6, { align: 'center' });
+    };
+
+    // ---- Stats ----
+    const total = exec.total_tests;
+    const passed = exec.passed;
+    const failed = exec.failed;
+    const skipped = Math.max(0, total - passed - failed);
+    const broken = 0;
+    const successPct = total > 0 ? (passed / total) * 100 : 0;
+    const isFail = exec.status === 'FAIL';
+    const targetSpec = deriveTargetSpec(exec.command, t);
+
+    fillPageBackground();
+    drawHeaderFooter();
+
+    // ---- Hero banner ----
+    const heroH = 50;
+    const heroY = currentY;
+    doc.setFillColor(17, 24, 39);
+    doc.roundedRect(marginX, heroY, contentWidth, heroH, 3, 3, 'F');
+
+    drawPill(
+      marginX + 6,
+      heroY + 6,
+      isFail ? t('EXECUÇÃO CRÍTICA FALHADA', 'CRITICAL FAILED RUN') : t('100% VERIFICADO APROVADO', '100% VERIFIED PASS'),
+      isFail ? { bg: [80, 7, 20], fg: [254, 202, 202] } : { bg: [6, 60, 46], fg: [167, 243, 208] },
+    );
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    const titleLines = doc.splitTextToSize(targetSpec.toUpperCase(), contentWidth - 56) as string[];
+    doc.text(titleLines[0] || '', marginX + 6, heroY + 19.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(formatTimestampPdf(exec.timestamp, language), marginX + 6, heroY + 26);
+
+    const cmdBoxW = contentWidth - 60;
+    const cmdBoxY = heroY + 30;
+    doc.setFillColor(2, 6, 16);
+    doc.roundedRect(marginX + 6, cmdBoxY, cmdBoxW, 14, 1.5, 1.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 102, 0);
+    doc.text(t('Comando Robot:', 'Robot Command:'), marginX + 9, cmdBoxY + 4.5);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    const cmdLines = doc.splitTextToSize(exec.command, cmdBoxW - 6) as string[];
+    cmdLines.slice(0, 2).forEach((line, i) => doc.text(line, marginX + 9, cmdBoxY + 8.5 + i * 3.4));
+
+    // Donut gauge (right side of hero)
+    drawDonutGauge(pageWidth - marginX - 22, heroY + 22, 16, successPct);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      t('PROPORÇÃO DE CASOS', 'PROPORTION OF CASES'),
+      pageWidth - marginX - 22,
+      heroY + 44,
+      { align: 'center' },
+    );
+
+    currentY = heroY + heroH + 8;
+
+    // ---- KPI cards (Total / Failed / Broken / Passed / Skipped) ----
+    const kpis: { title: string; value: number; accent: RGB }[] = [
+      { title: t('Total de Testes', 'Total Tests'), value: total, accent: [148, 163, 184] },
+      { title: 'Failed', value: failed, accent: [244, 63, 94] },
+      { title: 'Broken', value: broken, accent: [245, 158, 11] },
+      { title: 'Passed', value: passed, accent: [16, 185, 129] },
+      { title: 'Skipped', value: skipped, accent: [99, 102, 241] },
+    ];
+    const gap = 4;
+    const cardW = (contentWidth - gap * 4) / 5;
+    const cardH = 18;
+    kpis.forEach((kpi, i) => {
+      const x = marginX + i * (cardW + gap);
+      doc.setFillColor(17, 24, 39);
+      doc.roundedRect(x, currentY, cardW, cardH, 2, 2, 'F');
+      doc.setFillColor(kpi.accent[0], kpi.accent[1], kpi.accent[2]);
+      doc.rect(x, currentY, 1.2, cardH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(kpi.title.toUpperCase(), x + 4, currentY + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`${kpi.value}`, x + 4, currentY + 13);
+    });
+
+    currentY += cardH + 10;
+
+    // ---- Scenario results (mirrors the reports detail "Gherkin Workspace") ----
+    type RunStatus = 'PASS' | 'FAIL' | 'SKIP';
+    const STATUS_ICON_COLOR: Record<RunStatus, RGB> = {
+      PASS: [16, 185, 129],
+      FAIL: [244, 63, 94],
+      SKIP: [245, 158, 11],
+    };
+    const STEP_KEYWORD_COLOR: Record<string, { bg: RGB; fg: RGB }> = {
+      GIVEN: { bg: [12, 33, 61], fg: [56, 189, 248] },
+      WHEN: { bg: [49, 34, 7], fg: [251, 191, 36] },
+      THEN: { bg: [6, 46, 33], fg: [52, 211, 153] },
+      AND: { bg: [30, 41, 59], fg: [148, 163, 184] },
+    };
+
+    /** Draws a circular status indicator with a vector check / x / dash glyph. */
+    const drawStatusIcon = (cx: number, cy: number, r: number, status: RunStatus) => {
+      const color = STATUS_ICON_COLOR[status] || STATUS_ICON_COLOR.SKIP;
+      doc.setDrawColor(color[0], color[1], color[2]);
+      doc.setFillColor(2, 6, 16);
+      doc.setLineWidth(0.4);
+      doc.circle(cx, cy, r, 'FD');
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(color[0], color[1], color[2]);
+      if (status === 'PASS') {
+        doc.line(cx - r * 0.45, cy + r * 0.05, cx - r * 0.05, cy + r * 0.45);
+        doc.line(cx - r * 0.05, cy + r * 0.45, cx + r * 0.55, cy - r * 0.45);
+      } else if (status === 'FAIL') {
+        doc.line(cx - r * 0.4, cy - r * 0.4, cx + r * 0.4, cy + r * 0.4);
+        doc.line(cx - r * 0.4, cy + r * 0.4, cx + r * 0.4, cy - r * 0.4);
+      } else {
+        doc.line(cx - r * 0.45, cy, cx + r * 0.45, cy);
+      }
+    };
+
+    /** Draws the segmented pass/fail/skip proportion bar with a track. */
+    const drawSegBar = (x: number, y: number, w: number, h: number) => {
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(x, y, w, h, h / 2, h / 2, 'F');
+      let cx = x;
+      const seg = (count: number, color: RGB) => {
+        if (count > 0 && total > 0) {
+          const sw = (count / total) * w;
+          doc.setFillColor(color[0], color[1], color[2]);
+          doc.rect(cx, y, sw, h, 'F');
+          cx += sw;
+        }
+      };
+      seg(passed, [16, 185, 129]);
+      seg(failed, [244, 63, 94]);
+      seg(skipped, [245, 158, 11]);
+    };
+
+    /** Draws a small colored count chip (count + drawn mark) and returns its width. */
+    const drawCountChip = (x: number, y: number, count: number, status: RunStatus): number => {
+      const palette: Record<RunStatus, { bg: RGB; fg: RGB }> = {
+        PASS: { bg: [6, 46, 33], fg: [52, 211, 153] },
+        FAIL: { bg: [60, 12, 20], fg: [251, 113, 133] },
+        SKIP: { bg: [49, 34, 7], fg: [251, 191, 36] },
+      };
+      const c = palette[status];
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      const label = `${count}`;
+      const w = doc.getTextWidth(label) + 5.5;
+      doc.setFillColor(c.bg[0], c.bg[1], c.bg[2]);
+      doc.roundedRect(x, y, w, 4, 0.8, 0.8, 'F');
+      doc.setTextColor(c.fg[0], c.fg[1], c.fg[2]);
+      doc.text(label, x + 2, y + 2.8);
+      const mx = x + 2 + doc.getTextWidth(label) + 1.6;
+      const my = y + 2;
+      doc.setDrawColor(c.fg[0], c.fg[1], c.fg[2]);
+      doc.setLineWidth(0.4);
+      if (status === 'PASS') {
+        doc.line(mx - 0.8, my + 0.1, mx - 0.2, my + 0.7);
+        doc.line(mx - 0.2, my + 0.7, mx + 0.9, my - 0.7);
+      } else if (status === 'FAIL') {
+        doc.line(mx - 0.7, my - 0.7, mx + 0.7, my + 0.7);
+        doc.line(mx - 0.7, my + 0.7, mx + 0.7, my - 0.7);
+      } else {
+        doc.line(mx - 0.8, my, mx + 0.8, my);
+      }
+      return w;
+    };
+
+    // Card title: "Sintaxe Workspace Gherkin: cardmais.feature"
+    checkPageBreak(14);
+    doc.setFillColor(255, 102, 0);
+    doc.roundedRect(marginX, currentY - 2.8, 3, 3, 0.5, 0.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${t('SINTAXE WORKSPACE GHERKIN:', 'GHERKIN WORKSPACE SYNTAX:')} cardmais.feature`, marginX + 5, currentY);
+    currentY += 6;
+
+    // Environment header row (with segmented proportion bar)
+    checkPageBreak(11);
+    const envY = currentY;
+    doc.setFillColor(15, 23, 42);
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(marginX, envY, contentWidth, 8, 1.5, 1.5, 'FD');
+    doc.setFillColor(148, 163, 184);
+    doc.triangle(marginX + 3, envY + 3, marginX + 6, envY + 3, marginX + 4.5, envY + 5, 'F');
+    doc.setFillColor(255, 101, 0);
+    doc.roundedRect(marginX + 8, envY + 2.7, 3, 2.6, 0.4, 0.4, 'F');
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(203, 213, 225);
+    doc.text('Environment: "ubuntu-latest"', marginX + 13, envY + 5.2);
+    const barW = 24;
+    const barX = pageWidth - marginX - 4 - barW;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    const testesLabel = `${total} ${t('testes', 'tests')}`;
+    doc.text(testesLabel, barX - 2 - doc.getTextWidth(testesLabel), envY + 5.2);
+    drawSegBar(barX, envY + 3, barW, 2.5);
+    currentY = envY + 8 + 4;
+
+    if (testCases.length === 0) {
+      addWrappedText(
+        t('Nenhum caso de teste vinculado a esta execução.', 'No test cases linked to this execution.'),
+        marginX + 2,
+        contentWidth - 4,
+        9,
+        [148, 163, 184],
+      );
+    }
+
+    const categoriesMap: Record<string, DbTestCase[]> = {};
+    testCases.forEach((tc) => {
+      const cat = tc.category || t('Sem Categoria', 'Uncategorized');
+      (categoriesMap[cat] ||= []).push(tc);
+    });
+
+    Object.keys(categoriesMap).forEach((category) => {
+      const list = categoriesMap[category];
+      const catPass = list.filter((c) => c.status === 'PASS').length;
+      const catFail = list.filter((c) => c.status === 'FAIL').length;
+      const catSkip = list.filter((c) => c.status === 'SKIP').length;
+
+      // Category header strip: [name] + N cenários + colored count chips
+      checkPageBreak(11);
+      const catY = currentY;
+      doc.setFillColor(17, 24, 39);
+      doc.setDrawColor(30, 41, 59);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(marginX + 2, catY, contentWidth - 4, 7, 1.5, 1.5, 'FD');
+      doc.setFillColor(100, 116, 139);
+      doc.triangle(marginX + 5, catY + 2.7, marginX + 7.5, catY + 2.7, marginX + 6.25, catY + 4.4, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 102, 0);
+      doc.text(`[${category}]`, marginX + 9, catY + 4.6);
+
+      let chipX = pageWidth - marginX - 6;
+      const chips: [RunStatus, number][] = [['SKIP', catSkip], ['FAIL', catFail], ['PASS', catPass]];
+      chips.forEach(([st, cnt]) => {
+        if (cnt > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6);
+          const w = doc.getTextWidth(`${cnt}`) + 5.5;
+          chipX -= w;
+          drawCountChip(chipX, catY + 1.4, cnt, st);
+          chipX -= 2;
+        }
+      });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      const cenLabel = `${list.length} ${t('cenários', 'scenarios')}`;
+      chipX -= 2 + doc.getTextWidth(cenLabel);
+      doc.text(cenLabel, chipX, catY + 4.6);
+      currentY = catY + 7 + 3;
+
+      list.forEach((tc) => {
+        checkPageBreak(17);
+
+        // Case row: status icon + id badge + (BDD scenario) + name + duration + STEPS chip
+        const rowY = currentY;
+        const rowH = 11;
+        doc.setFillColor(2, 6, 16);
+        doc.setDrawColor(20, 27, 45);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(marginX + 2, rowY, contentWidth - 4, rowH, 1.5, 1.5, 'FD');
+
+        drawStatusIcon(marginX + 7, rowY + rowH / 2, 2.2, tc.status);
+
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(6.5);
+        const idW = doc.getTextWidth(tc.id) + 4;
+        doc.setFillColor(15, 23, 42);
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(marginX + 11, rowY + 2.1, idW, 4, 0.8, 0.8, 'FD');
+        doc.setTextColor(148, 163, 184);
+        doc.text(tc.id, marginX + 13, rowY + 4.9);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text('(BDD scenario)', marginX + 11 + idW + 2, rowY + 4.9);
+
+        // Right: STEPS chip + duration
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.5);
+        const passosLabel = t('FECHAR PASSOS', 'CLOSE STEPS');
+        const pcW = doc.getTextWidth(passosLabel) + 5;
+        const pcX = pageWidth - marginX - 6 - pcW;
+        doc.setFillColor(15, 23, 42);
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(pcX, rowY + 2, pcW, 4.4, 0.8, 0.8, 'FD');
+        doc.setTextColor(148, 163, 184);
+        doc.text(passosLabel, pcX + 2, rowY + 4.9);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        const durLabel = formatDurationPdf(tc.duration_s);
+        doc.text(durLabel, pcX - 2 - doc.getTextWidth(durLabel), rowY + 4.9);
+
+        // Name (bold, second line)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.8);
+        doc.setTextColor(226, 232, 240);
+        const nameMaxW = contentWidth - 4 - 11 - 8;
+        const nameLine = (doc.splitTextToSize(tc.name, nameMaxW) as string[])[0] || '';
+        doc.text(nameLine, marginX + 11, rowY + 8.8);
+        currentY += rowH + 6;
+
+        // Steps tracer label
+        checkPageBreak(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.8);
+        doc.setTextColor(100, 116, 139);
+        doc.text('TEST STEP EXECUTION TRACER (VIRTUAL SQLITE LOGS)', marginX + 10, currentY);
+        doc.setDrawColor(20, 27, 45);
+        doc.setLineWidth(0.2);
+        doc.line(marginX + 10, currentY + 1.2, pageWidth - marginX - 4, currentY + 1.2);
+        currentY += 4;
+
+        const caseSteps = steps.filter((s) => s.test_case_id === tc.id);
+        if (caseSteps.length === 0) {
+          checkPageBreak(6);
+          doc.setDrawColor(255, 102, 0);
+          doc.setLineWidth(0.5);
+          doc.line(marginX + 10, currentY - 2.6, marginX + 10, currentY + 1.4);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6.8);
+          doc.setTextColor(100, 116, 139);
+          doc.text(
+            t("Nenhum passo de Gherkin encontrado na tabela SQLite 'steps'.", "No Gherkin steps found in SQL 'steps' table."),
+            marginX + 13,
+            currentY,
+          );
+          currentY += 5;
+        } else {
+          caseSteps.forEach((st) => {
+            checkPageBreak(6.5);
+            const stepY = currentY;
+            const rowLeft = marginX + 13;
+            const rowRight = pageWidth - marginX - 4;
+            const rowW = rowRight - rowLeft;
+
+            // Orange left accent (mirrors border-l-2 border-[#FF6600]/30)
+            doc.setDrawColor(255, 102, 0);
+            doc.setLineWidth(0.5);
+            doc.line(marginX + 10, stepY - 3.2, marginX + 10, stepY + 1.6);
+
+            doc.setFillColor(8, 11, 22);
+            doc.setDrawColor(17, 24, 39);
+            doc.setLineWidth(0.2);
+            doc.roundedRect(rowLeft, stepY - 3.2, rowW, 5, 0.8, 0.8, 'FD');
+
+            drawStatusIcon(rowLeft + 3, stepY - 0.6, 1.4, st.status);
+
+            const kw = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(5.5);
+            const kwLabel = st.step_type.toUpperCase();
+            const kwW = doc.getTextWidth(kwLabel) + 3.5;
+            doc.setFillColor(kw.bg[0], kw.bg[1], kw.bg[2]);
+            doc.roundedRect(rowLeft + 5.5, stepY - 2.5, kwW, 3.6, 0.6, 0.6, 'F');
+            doc.setTextColor(kw.fg[0], kw.fg[1], kw.fg[2]);
+            doc.text(kwLabel, rowLeft + 7.2, stepY);
+
+            // Right timing/status value
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6);
+            doc.setTextColor(100, 116, 139);
+            const val = st.status === 'SKIP' ? 'SKIP' : st.status === 'FAIL' ? 'FAIL' : '65ms';
+            const valW = doc.getTextWidth(val);
+            doc.text(val, rowRight - 2 - valW, stepY);
+
+            // Quoted step text
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.8);
+            doc.setTextColor(203, 213, 225);
+            const txtX = rowLeft + 5.5 + kwW + 2;
+            const txtMaxW = rowRight - 2 - valW - 2 - txtX;
+            const stepLine = (doc.splitTextToSize(`"${st.text}"`, txtMaxW) as string[])[0] || '';
+            doc.text(stepLine, txtX, stepY);
+            currentY += 6;
+          });
+          currentY += 1;
+        }
+
+        // Breathing room between consecutive test cases
+        currentY += 4;
+      });
+
+      currentY += 3;
+    });
+
+    const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fileName);
+  } catch (err) {
+    console.error('Execution report PDF exception:', err);
   }
 };

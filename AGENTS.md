@@ -82,6 +82,24 @@ Na tela do **Sistema de Gestão de Testes (TMS)** existem dois botões de execu�
 
 ---
 
+## 🎨 Padrão Visual de Bordas de Botões (UI)
+
+Regra obrigatória de UI para **todos os botões** da plataforma, para manter consistência visual:
+
+1. **Borda clara em repouso, mais forte ao interagir/selecionar**:
+   - Estado padrão (não selecionado/sem hover): borda **clara/suave** (ex.: `border-slate-200` no tema claro, `border-slate-800` no tema escuro).
+   - Estado de hover/foco/selecionado: borda **mais forte/destacada** (ex.: `hover:border-sky-400`, `hover:border-blue-500`, `hover:border-sky-500`).
+   - ⚠️ Nunca deixar um botão com borda escura/forte por padrão quando ele não está selecionado.
+
+2. **Proibido usar tons inexistentes do Tailwind**:
+   - Use **apenas** os tons válidos da escala (`50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950`).
+   - Valores como `slate-150`, `slate-205`, `slate-250`, `slate-705`, `slate-750` **não existem**. Classes inválidas são ignoradas e, no caso de `border`, a cor cai para o `currentColor` (escuro), quebrando a regra acima.
+   - Sempre arredonde para o tom válido mais próximo (ex.: `slate-250` → `slate-200`; `slate-750` → `slate-700`).
+
+> Referência de padrão correto: o botão "Voltar" e o seletor de idioma do shell (`border-slate-200 hover:border-blue-500` / `border-slate-800 hover:border-sky-500`).
+
+---
+
 ## ⚙️ Menu de Configuração & Controle de Simulação (Novo)
 
 Para centralizar ações administrativas e calibração de performance de QA, implementamos um sofisticado **Menu de Configuração** suspenso a partir do botão com ícone de engrenagem no cabeçalho principal:

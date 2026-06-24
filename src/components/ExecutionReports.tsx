@@ -11,6 +11,7 @@
 import React, { useState } from 'react';
 import { DbExecution, VirtualDatabase, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
 import { createTranslator } from '../utils/i18n';
+import { handleExportExecutionReportToPDF } from '../utils/pdfExporter';
 import { 
   Calendar, 
   Clock, 
@@ -38,7 +39,8 @@ import {
   Globe,
   Terminal,
   Copy,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
 
 interface ExecutionReportsProps {
@@ -271,6 +273,20 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
             >
               <Globe className="w-3.5 h-3.5 text-sky-500" />
               <span className="text-[10px] text-slate-350 font-bold block uppercase">{language === 'PT' ? 'PT 🇧🇷' : 'EN 🇺🇸'}</span>
+            </button>
+
+            {/* Export Report to PDF (mirrors this report's layout) */}
+            <button
+              type="button"
+              onClick={() => {
+                const linked = sqliteDb.test_cases.filter(tc => tc.execution_id === exec.id);
+                handleExportExecutionReportToPDF(exec, linked, sqliteDb.steps, language);
+              }}
+              className="flex items-center gap-1.5 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 px-2.5 py-1 rounded-lg text-rose-400 transition-all cursor-pointer font-bold shadow-sm"
+              title={t("Exportar este relatório para PDF", "Export this report to PDF")}
+            >
+              <FileText className="w-3.5 h-3.5 text-rose-400" />
+              <span className="text-[10px] text-slate-350 font-bold block uppercase">PDF</span>
             </button>
 
             {/* Settings Button */}

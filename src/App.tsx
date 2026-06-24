@@ -1734,7 +1734,7 @@ export default function App({ initialTab }: AppProps = {}) {
             <button
               type="button"
               onClick={() => setLanguage(l => l === 'PT' ? 'ENG' : 'PT')}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-250 rounded-xl text-xs font-mono font-bold text-slate-750 hover:text-sky-600 hover:border-sky-300 transition-all cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 hover:text-sky-600 hover:border-sky-400 transition-all cursor-pointer shadow-sm"
               title={t("Alterar idioma para Inglês", "Switch language to Portuguese")}
             >
               <Globe className="w-3.5 h-3.5 text-sky-600" />
@@ -1746,10 +1746,10 @@ export default function App({ initialTab }: AppProps = {}) {
               onClick={() => {
                 window.location.href = '/';
               }}
-              className="bg-slate-150 hover:bg-slate-205 text-slate-700 font-bold px-3.5 py-2 rounded-xl text-xs transition-all font-mono flex items-center gap-1.5 cursor-pointer border border-slate-200 hover:border-blue-500 hover:text-blue-600"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl text-xs transition-all font-mono flex items-center gap-1.5 cursor-pointer border border-slate-200 hover:border-blue-500 hover:text-blue-600"
               title={t("Voltar ao Painel TMS", "Return to TMS Panel")}
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-slate-705" />
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-700" />
               {t("Voltar", "Back")}
             </button>
           </div>
