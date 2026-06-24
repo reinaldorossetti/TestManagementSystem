@@ -84,14 +84,6 @@ const STATUS_COLORS: Record<StatusLabel, { bg: RGB; fg: RGB }> = {
 
 const GHERKIN_KEYWORDS = /^(Dado|Dada|Given|Quando|When|Então|Entao|Then|E|And|Mas|But)\b/i;
 
-const keywordBadgeColors = (keyword: string): { bg: RGB; fg: RGB } => {
-  const k = keyword.toUpperCase();
-  if (k === 'DADO' || k === 'DADA' || k === 'GIVEN') return { bg: [30, 64, 175], fg: [147, 197, 253] };
-  if (k === 'QUANDO' || k === 'WHEN') return { bg: [146, 64, 14], fg: [254, 240, 138] };
-  if (k === 'ENTÃO' || k === 'ENTAO' || k === 'THEN') return { bg: [6, 95, 70], fg: [167, 243, 208] };
-  return { bg: [51, 65, 85], fg: [226, 232, 240] }; // E / And / Mas / But
-};
-
 /**
  * Dark-theme, screen-accurate PDF exporter for the TMS test-case management view
  * (the "Plano de Testes" produced from the PASTAS / FEATURES panel). Follows the
