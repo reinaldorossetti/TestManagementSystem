@@ -62,6 +62,24 @@ O simulador suporta dois fluxos distintos de execução de maneira transparente 
    - Quando acionado, limpa filtros momentâneos e realiza a simulação de execução de **todos os cenários** contidos no arquivo atual de forma sequencial.
    - Exibe o comando canônico Robot padrão: `python -m robot -A args.txt ... ./`.
 
+### 🧩 Regra de Singular vs. Plural na Tela TMS (Gestão de Testes)
+
+Na tela do **Sistema de Gestão de Testes (TMS)** existem dois botões de execução cuja semântica é definida estritamente pelo número (singular/plural). Esta distinção é **obrigatória** e não deve ser confundida nem alterada:
+
+1. **Botão "Executar Teste Automatizado" (SINGULAR = um único teste)**:
+   - Localizado no rodapé do **painel de detalhes do caso de teste selecionado** (lado direito).
+   - Executa **somente o teste selecionado** (o caso aberto no detalhe), e nenhum outro.
+   - Implementado por `handleLoadTestCaseToWorkspace(currentCase.id)` em `src/App.tsx`.
+   - ⚠️ **Não alterar** o escopo deste botão para múltiplos casos. Singular = unitário.
+
+2. **Botão "Executar Testes" (PLURAL = todos os testes da feature)**:
+   - Localizado no rodapé da **lista de casos de teste** (ao lado de "Criar Caso").
+   - Executa **todos os casos da pasta/feature selecionada** (`selectedSphereFolder`); com "Todas as Pastas" ativo, executa a suíte completa.
+   - O **filtro de busca** afeta apenas a lista exibida; **não** restringe a execução.
+   - Implementado por `handleLoadMultipleTestCasesToWorkspace(folderCases)` em `src/App.tsx`.
+
+> Mnemônico: **singular ("Teste") = um só (o selecionado)**; **plural ("Testes") = todos (da feature)**. Qualquer alteração futura deve preservar essa regra e ficar restrita ao botão correspondente, sem afetar o outro.
+
 ---
 
 ## ⚙️ Menu de Configuração & Controle de Simulação (Novo)

@@ -1,5 +1,11 @@
 import ExcelJS from 'exceljs';
 import { DbTestCaseSphere } from './sqliteEngine';
+import {
+  getSeverityLevel,
+  getCriticalityLevel,
+  getComplexityDetails,
+  getStatusLabel,
+} from './testCaseClassification';
 
 const getDefaultSqlQueryExport = (caseId: string) => {
   return `-- Exemplos de Query para o Caso de Teste ${caseId}
@@ -24,45 +30,6 @@ Executar Cenário ${caseId}
     Dado Que O Usuário Está Logado No Sistema
     Quando Preenche Os Parâmetros Do Cenário
     Então Valida O Resultado Esperado Em Tela`;
-};
-
-// Returns a realistic severity level based on the case ID and title
-const getSeverityLevel = (title: string, id: string): 'Critical' | 'High' | 'Medium' | 'Low' => {
-  const lower = title.toLowerCase();
-  if (lower.includes('senha') || lower.includes('login') || lower.includes('autentic') || lower.includes('token') || lower.includes('segurança') || lower.includes('crítico')) {
-    return 'Critical';
-  }
-  if (lower.includes('pagar') || lower.includes('pagamento') || lower.includes('recarga') || lower.includes('saldo') || lower.includes('carteira') || lower.includes('erro') || lower.includes('limite')) {
-    return 'High';
-  }
-  if (lower.includes('filtro') || lower.includes('busca') || lower.includes('detalhe') || lower.includes('consultar') || lower.includes('visualizar') || lower.includes('histórico')) {
-    return 'Medium';
-  }
-  return 'Low';
-};
-
-// Returns a realistic criticality level based on severity and ID
-const getCriticalityLevel = (severity: 'Critical' | 'High' | 'Medium' | 'Low', id: string): 'Critical' | 'High' | 'Medium' | 'Low' => {
-  const lastChar = id.slice(-1);
-  const num = parseInt(lastChar, 10);
-  if (!isNaN(num) && num % 4 === 0) {
-    return 'Critical';
-  }
-  return severity;
-};
-
-// Returns realistic automation complexity details
-const getComplexityDetails = (severity: 'Critical' | 'High' | 'Medium' | 'Low'): string => {
-  if (severity === 'Critical') {
-    return 'Complexidade Alta:\n- Os elementos não possuem ID único, fazer uma solicitação para o time de desenvolvimento. Ou solicitar o acesso para o QA realizar o ajuste na aplicação com supervisão do Dev Senior.\n- Massa de Dados não pode ser feita de forma aleatórias, é preciso modificar os dados na base de dados antes de realizar os testes, ou testar fazer via API.';
-  }
-  if (severity === 'High') {
-    return 'Complexidade Média:\n- Requer setup de massa de dados dinâmico via query SQLite prévia.\n- Necessário capturar token de sessão e passar nos headers para simulação de requisições paralelas.';
-  }
-  if (severity === 'Medium') {
-    return 'Complexidade Média:\n- Validação de respostas em grade de dados com propriedades dinâmicas.\n- Necessário assincronismo estrito devido ao atraso de renderização de componentes de tela de terceiros.';
-  }
-  return 'Complexidade Baixa:\n- Elementos web com IDs estáticos bem definidos.\n- Fluxo linear sem condicionais complexas, facilmente mapeável nas suítes automatizadas.';
 };
 
 // Helper to clean sheet names so Excel can load them without crashing (limit to 30 chars containing no forbidden characters)
@@ -325,19 +292,7 @@ export const handleExportToExcel = async (
   // Resolves the real, persisted execution status for a case, mapping the
   // internal status codes to the formal lifecycle labels (AGENTS.md). Cases that
   // were never executed report "Not Started" instead of a fabricated result.
-  const getLastExecutionStatus = (id: string): string => {
-    const status = statusByCaseId[id];
-    switch (status) {
-      case 'PASS':
-        return 'Passed';
-      case 'FAIL':
-        return 'Failed';
-      case 'SKIP':
-        return 'Skipped';
-      default:
-        return 'Not Started';
-    }
-  };
+  const getLastExecutionStatus = (id: string): string => getStatusLabel(statusByCaseId[id]);
 
   const applyStatusStyles = (cell: ExcelJS.Cell, statusText: string) => {
     let bgColor = 'FFF3F4F6'; // Default soft grey

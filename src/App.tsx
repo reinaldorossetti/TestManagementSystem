@@ -51,6 +51,7 @@ import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/feat
 import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { handleExportToExcel } from './utils/excelExporter';
+import { handleExportTestCasesToPDF } from './utils/pdfExporter';
 import { useDatabase } from './hooks/useDatabase';
 import { createTranslator } from './utils/i18n';
 
@@ -266,7 +267,21 @@ const getFormattedTimestamp = () => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-export default function App() {
+export type WorkspaceFeature = 'terminal' | 'sqlite' | 'reports' | 'tms';
+
+interface AppProps {
+  /**
+   * Feature pinned by the current route (e.g. /reports renders App with
+   * `initialTab="reports"`). When omitted, it is derived from the URL pathname,
+   * falling back to the legacy `?tab=` query param for backward compatibility.
+   */
+  initialTab?: WorkspaceFeature;
+}
+
+const isWorkspaceFeature = (value: string | null | undefined): value is WorkspaceFeature =>
+  value === 'terminal' || value === 'sqlite' || value === 'reports' || value === 'tms';
+
+export default function App({ initialTab }: AppProps = {}) {
   // Gherkin source state
   const [gherkinContent, setGherkinContent] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -589,13 +604,13 @@ export default function App() {
 
   // DB View Settings
   const [dbSearchQuery, setDbSearchQuery] = useState<string>('');
-  const [activeTab, setActiveTab ] = useState<'terminal' | 'sqlite' | 'reports' | 'tms'>(() => {
+  const [activeTab, setActiveTab ] = useState<WorkspaceFeature>(() => {
+    if (initialTab) return initialTab;
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam === 'terminal' || tabParam === 'sqlite' || tabParam === 'reports' || tabParam === 'tms') {
-        return tabParam;
-      }
+      const segment = window.location.pathname.split('/').filter(Boolean)[0];
+      if (isWorkspaceFeature(segment)) return segment;
+      const tabParam = new URLSearchParams(window.location.search).get('tab');
+      if (isWorkspaceFeature(tabParam)) return tabParam;
     }
     return 'terminal';
   });
@@ -1275,7 +1290,7 @@ export default function App() {
     // Dynamic state update of query parameters in URL without triggering hard page reload
     if (typeof window !== 'undefined') {
       try {
-        const newRawUrl = `${window.location.origin}${window.location.pathname}?tab=terminal`;
+        const newRawUrl = `${window.location.origin}/terminal`;
         window.history.pushState({ path: newRawUrl }, '', newRawUrl);
       } catch (e) {
         console.error("Failed to pushState dynamic URL change: ", e);
@@ -1318,7 +1333,7 @@ export default function App() {
     // Dynamic state update of query parameters in URL without triggering hard page reload
     if (typeof window !== 'undefined') {
       try {
-        const newRawUrl = `${window.location.origin}${window.location.pathname}?tab=terminal`;
+        const newRawUrl = `${window.location.origin}/terminal`;
         window.history.pushState({ path: newRawUrl }, '', newRawUrl);
       } catch (e) {
         console.error("Failed to pushState dynamic URL change: ", e);
@@ -1403,7 +1418,7 @@ export default function App() {
     }
     
     appendTerminalLog(`[TMS] Sucesso! ${parsed.scenarios.length} cenários importados da Workspace e arquivados no CRUD TMS na pasta '${folderName}'.`, 'success');
-    window.open(`${window.location.origin}/?tab=tms`, '_blank');
+    window.open(`${window.location.origin}/tms`, '_blank');
   };
 
   // Automated Test Simulator Runner
@@ -1754,69 +1769,67 @@ export default function App() {
                 </span>
               </div>
               
-              {/* Sleek action toolbar row */}
-              <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-100 pt-2.5">
-                <div className="flex flex-wrap items-center gap-1">
-                  {/* Create New Folder */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreatingFolder(true);
-                      setIsEditingFolder(false);
-                    }}
-                    className="h-8 px-2.5 text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-all border border-sky-100 flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0"
-                    title={t("Criar Nova Pasta / Feature", "Create New Folder / Feature")}
-                  >
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
-                    <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Nova", "New")}</span>
-                  </button>
+              {/* Sleek action toolbar row: all actions inline, evenly spaced and responsive */}
+              <div className="flex flex-wrap items-stretch gap-1.5 border-t border-slate-100 pt-2.5">
+                {/* Create New Folder */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingFolder(true);
+                    setIsEditingFolder(false);
+                  }}
+                  className="h-8 px-2.5 text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-all border border-sky-100 flex items-center justify-center gap-1 cursor-pointer font-bold grow basis-[68px]"
+                  title={t("Criar Nova Pasta / Feature", "Create New Folder / Feature")}
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Nova", "New")}</span>
+                </button>
 
-                  {/* Edit Folder Name */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedSphereFolder && selectedSphereFolder !== 'all') {
-                        setEditFolderNameValue(selectedSphereFolder);
-                        setIsEditingFolder(true);
-                        setIsCreatingFolder(false);
-                      } else {
-                        alert(t("Selecione uma pasta de teste específica para editar.", "Select a specific test folder/feature to edit."));
-                      }
-                    }}
-                    className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 ${
-                      selectedSphereFolder && selectedSphereFolder !== 'all'
-                        ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400'
-                        : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
-                    }`}
-                    disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
-                    title={t("Editar Pasta Selecionada", "Edit Selected Folder")}
-                  >
-                    <Edit className="w-3.5 h-3.5 stroke-[2]" />
-                    <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Editar", "Edit")}</span>
-                  </button>
+                {/* Edit Folder Name */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedSphereFolder && selectedSphereFolder !== 'all') {
+                      setEditFolderNameValue(selectedSphereFolder);
+                      setIsEditingFolder(true);
+                      setIsCreatingFolder(false);
+                    } else {
+                      alert(t("Selecione uma pasta de teste específica para editar.", "Select a specific test folder/feature to edit."));
+                    }
+                  }}
+                  className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold grow basis-[68px] ${
+                    selectedSphereFolder && selectedSphereFolder !== 'all'
+                      ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400'
+                      : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
+                  }`}
+                  disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+                  title={t("Editar Pasta Selecionada", "Edit Selected Folder")}
+                >
+                  <Edit className="w-3.5 h-3.5 stroke-[2]" />
+                  <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Editar", "Edit")}</span>
+                </button>
 
-                  {/* Delete Selected Folder with associated tests */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedSphereFolder && selectedSphereFolder !== 'all') {
-                        handleDeleteFolder(selectedSphereFolder);
-                      } else {
-                        alert(t("Selecione uma pasta de teste específica para excluir.", "Select a specific test folder to delete."));
-                      }
-                    }}
-                    className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 ${
-                      selectedSphereFolder && selectedSphereFolder !== 'all'
-                        ? 'text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border-slate-200 hover:border-rose-400'
-                        : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
-                    }`}
-                    disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
-                    title={t("Excluir Pasta com todos os Testes", "Delete Folder with All Associated Tests")}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 stroke-[2]" />
-                    <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Excluir", "Delete")}</span>
-                  </button>
-                </div>
+                {/* Delete Selected Folder with associated tests */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedSphereFolder && selectedSphereFolder !== 'all') {
+                      handleDeleteFolder(selectedSphereFolder);
+                    } else {
+                      alert(t("Selecione uma pasta de teste específica para excluir.", "Select a specific test folder to delete."));
+                    }
+                  }}
+                  className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold grow basis-[68px] ${
+                    selectedSphereFolder && selectedSphereFolder !== 'all'
+                      ? 'text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border-slate-200 hover:border-rose-400'
+                      : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
+                  }`}
+                  disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+                  title={t("Excluir Pasta com todos os Testes", "Delete Folder with All Associated Tests")}
+                >
+                  <Trash2 className="w-3.5 h-3.5 stroke-[2]" />
+                  <span className="text-[10px] font-mono font-black pr-0.5 hidden sm:inline">{t("Excluir", "Delete")}</span>
+                </button>
 
                 {/* Export Excel Button with elegant design */}
                 <button
@@ -1832,11 +1845,32 @@ export default function App() {
                     setToastMessage(t("Plataforma: Casos de teste exportados para Excel com sucesso!", "Platform: Test cases successfully exported to Excel!"));
                     setTimeout(() => setToastMessage(null), 3000);
                   }}
-                  className="h-8 px-2 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-600 hover:text-emerald-700 border border-slate-200 hover:border-emerald-400 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 grow sm:grow-0"
+                  className="h-8 px-2 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-600 hover:text-emerald-700 border border-slate-200 hover:border-emerald-400 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer font-bold grow basis-[68px]"
                   title={t("Exportar todos os Casos para Excel", "Export All Test Cases to Excel")}
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   <span className="text-[10px] font-mono font-black hidden sm:inline">{t("Excel", "Excel")}</span>
+                </button>
+
+                {/* Export PDF Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const casesToExport = sqliteDb.test_cases_sphere || [];
+                    const foldersList = sqliteDb.test_folders || [];
+                    if (casesToExport.length === 0) {
+                      alert(t("Não existem casos de teste cadastrados para exportar.", "There are no registered test cases to export."));
+                      return;
+                    }
+                    handleExportTestCasesToPDF(casesToExport, foldersList, sphereTestCaseStatuses, language);
+                    setToastMessage(t("Plataforma: Plano de testes exportado para PDF com sucesso!", "Platform: Test plan successfully exported to PDF!"));
+                    setTimeout(() => setToastMessage(null), 3000);
+                  }}
+                  className="h-8 px-2 bg-rose-50/70 hover:bg-rose-100/80 text-rose-600 hover:text-rose-700 border border-slate-200 hover:border-rose-400 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer font-bold grow basis-[92px]"
+                  title={t("Exportar Plano de Testes para PDF", "Export Test Plan to PDF")}
+                >
+                  <FileText className="w-4 h-4 text-rose-600" />
+                  <span className="text-[10px] font-mono font-black hidden sm:inline">{t("Exportar PDF", "Export PDF")}</span>
                 </button>
               </div>
             </div>
@@ -2079,17 +2113,19 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  const filteredCases = (sqliteDb.test_cases_sphere || [])
-                    .filter(tc => selectedSphereFolder === 'all' || tc.folder === selectedSphereFolder)
-                    .filter(tc => {
-                      if (!searchSphereQuery.trim()) return true;
-                      const query = searchSphereQuery.toLowerCase();
-                      return tc.id.toLowerCase().includes(query) || tc.title.toLowerCase().includes(query);
-                    });
-                  handleLoadMultipleTestCasesToWorkspace(filteredCases);
+                  // Regra (apenas nesta tela): "Executar Testes" executa os casos da
+                  // pasta/feature selecionada. Com "Todas as Pastas" ativo, executa a
+                  // suíte completa. O filtro de busca não restringe a execução.
+                  const folderCases = (sqliteDb.test_cases_sphere || [])
+                    .filter(tc => selectedSphereFolder === 'all' || tc.folder === selectedSphereFolder);
+                  if (folderCases.length === 0) {
+                    alert(t("Não há casos de teste na feature selecionada para executar.", "There are no test cases in the selected feature to run."));
+                    return;
+                  }
+                  handleLoadMultipleTestCasesToWorkspace(folderCases);
                 }}
                 className="bg-[#FF6600] hover:bg-[#E05500] text-white py-3 rounded-xl text-xs transition-colors font-mono flex items-center justify-center gap-1.5 font-extrabold shadow-md shadow-[#FF6600]/10 cursor-pointer"
-                title={t("Carregar e executar todos os casos de teste deste filtro", "Load and execute all test cases matching this filter")}
+                title={t("Executar todos os casos da feature/pasta selecionada", "Run all test cases of the selected feature/folder")}
               >
                 <PlayCircle className="w-4 h-4 text-white stroke-[2.5px] fill-transparent" />
                 {t("Executar Testes", "Run Automated Tests")}
@@ -2936,7 +2972,7 @@ export default function App() {
           {/* Test Management System standalone button under the WORKSPACE */}
           <button
             type="button"
-            onClick={() => window.open(`${window.location.origin}/?tab=tms`, '_blank')}
+            onClick={() => window.open(`${window.location.origin}/tms`, '_blank')}
             className="w-full bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-650 active:scale-[0.98] text-white font-extrabold py-3 px-4 rounded-xl text-xs transition-all font-mono flex items-center justify-center gap-2 shadow-lg shadow-sky-600/15 cursor-pointer"
             title="Abrir Central de Testes e Gestão (Test Management System)"
           >
@@ -4187,6 +4223,27 @@ export default function App() {
                       <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-[9.5px] font-mono font-black hidden sm:inline">Excel</span>
                     </button>
+
+                    {/* Export PDF Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const casesToExport = sqliteDb.test_cases_sphere || [];
+                        const foldersList = sqliteDb.test_folders || [];
+                        if (casesToExport.length === 0) {
+                          alert("Não existem casos de teste cadastrados para exportar.");
+                          return;
+                        }
+                        handleExportTestCasesToPDF(casesToExport, foldersList, sphereTestCaseStatuses, language);
+                        setToastMessage("Plataforma: Plano de testes exportado para PDF com sucesso!");
+                        setTimeout(() => setToastMessage(null), 3000);
+                      }}
+                      className="h-8 px-1.5 bg-rose-950/30 hover:bg-rose-950/50 text-rose-400 hover:text-rose-300 border border-rose-900/50 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0"
+                      title="Exportar Plano de Testes para PDF"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="text-[9.5px] font-mono font-black hidden sm:inline">Exportar PDF</span>
+                    </button>
                   </div>
                 </div>
 
@@ -4907,7 +4964,7 @@ export default function App() {
                   {/* Option 1: Terminal Robot Framework */}
                   <div
                     onClick={() => {
-                      window.open(`${window.location.origin}/?tab=terminal`, '_blank');
+                      window.open(`${window.location.origin}/terminal`, '_blank');
                       setIsNavDrawerOpen(false);
                     }}
                     className={`p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] ${
@@ -4939,7 +4996,7 @@ export default function App() {
                   {/* Option 2: Histórico de Execução Remoto */}
                   <div
                     onClick={() => {
-                      window.open(`${window.location.origin}/?tab=sqlite`, '_blank');
+                      window.open(`${window.location.origin}/sqlite`, '_blank');
                       setIsNavDrawerOpen(false);
                     }}
                     className={`p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] ${
@@ -4971,7 +5028,7 @@ export default function App() {
                   {/* Option 3: Relatórios */}
                   <div
                     onClick={() => {
-                      window.open(`${window.location.origin}/?tab=reports`, '_blank');
+                      window.open(`${window.location.origin}/reports`, '_blank');
                       setIsNavDrawerOpen(false);
                     }}
                     className={`p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] ${
@@ -5003,7 +5060,7 @@ export default function App() {
                   {/* Option 4: TMS Standalone */}
                   <div
                     onClick={() => {
-                      window.open(`${window.location.origin}/?tab=tms`, '_blank');
+                      window.open(`${window.location.origin}/tms`, '_blank');
                       setIsNavDrawerOpen(false);
                     }}
                     className="p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] bg-slate-950 border-slate-800/80 hover:border-sky-500/30"

@@ -179,7 +179,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
     let targetSpec = t('Suite Completa: cardmais.feature', 'Full Suite: cardmais.feature');
     if (exec.command.includes('-i ')) {
       const tagPart = exec.command.split('-i ')[1]?.split(' ')[0] || '';
-      if (tagPart) targetSpec = `${t('Foco na Tag', 'Focus on Tag')}: @${tagPart}`;
+      if (tagPart) targetSpec = `Feature: ${tagPart}`;
     } else if (exec.command.includes('--include ')) {
       const tagPart = exec.command.split('--include ')[1]?.split(' ')[0] || '';
       if (tagPart) targetSpec = `${t('Cenário Único', 'Single Scenario')}: @${tagPart}`;
@@ -298,9 +298,6 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
             {/* Title Block */}
             <div className="flex-1 text-center md:text-left">
               <div className="flex justify-center md:justify-start items-center gap-2 mb-1.5">
-                <span className="px-2 py-0.5 bg-[#FF6600]/10 border border-[#FF6600]/25 text-[#FF6600] text-[10px] font-bold font-mono roundeduppercase">
-                  ALLURE 3 DEMO PORTAL
-                </span>
                 {exec.status === 'FAIL' ? (
                   <span className="px-2 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-black rounded uppercase">
                     CRITICAL FAILED RUN
@@ -1065,7 +1062,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                 if (exec.command.includes('-i ')) {
                   const tagPart = exec.command.split('-i ')[1]?.split(' ')[0] || '';
                   if (tagPart) {
-                    runName = `${t('Foco na Tag', 'Focus on Tag')}: @${tagPart}`;
+                    runName = `Feature: ${tagPart}`;
                   }
                 } else if (exec.command.includes('--include ')) {
                   const tagPart = exec.command.split('--include ')[1]?.split(' ')[0] || '';

@@ -35,7 +35,7 @@ export class FeatureTms extends BasePage {
     return this.page.locator('main h4, h4');
   }
 
-  caseByName(name: string): Locator {
+  caseByName(name: string | RegExp): Locator {
     return this.page.getByRole('heading', { level: 4, name });
   }
 

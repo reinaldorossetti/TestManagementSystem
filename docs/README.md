@@ -235,6 +235,7 @@ TestManagementSystem/
 - **Navegador SQLite** com visualização em tabelas e **Console RAW SQL** (consultas somente-leitura via `/api/sql`).
 - **Aba de Relatórios** estilo Allure: cartões/tabela, filtros por status (PASS/FAIL), busca e drill-down por execução.
 - **Exportação Excel (.xlsx)** com múltiplas abas, KPIs, validação de dados (dropdowns) e links de evidência.
+- **Exportação PDF** (jsPDF) do Plano de Testes com tema escuro, banner, KPIs, cobertura por feature e detalhamento de cada caso (severidade/criticidade, passos Gherkin, resultado esperado).
 
 ### Plataforma
 - **API REST** completa para banco, execuções, specs, casos de teste, pastas e SQL.
