@@ -1,0 +1,106 @@
+// Prisma schema for the Centro de Execução QA TMS relational store.
+// Models mirror the legacy in-browser VirtualDatabase shape (src/utils/sqliteEngine.ts),
+// now persisted in a real SQLite database via the libsql driver adapter.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// A single simulated Robot Framework suite execution.
+model Execution {
+  id          String     @id
+  timestamp   String
+  command     String
+  durationS   Float      @map("duration_s")
+  totalTests  Int        @map("total_tests")
+  passed      Int
+  failed      Int
+  skipped     Int        @default(0)
+  status      String
+  resultsPath String     @map("results_path")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  testCases   TestCase[]
+
+  @@map("executions")
+}
+
+/// An individual scenario result belonging to an execution.
+model TestCase {
+  id          String    @id
+  executionId String    @map("execution_id")
+  name        String
+  category    String
+  status      String
+  durationS   Float     @map("duration_s")
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  steps       Step[]
+
+  @@index([executionId])
+  @@map("test_cases")
+}
+
+/// A single Gherkin/keyword step result belonging to a test case.
+model Step {
+  id         String   @id
+  testCaseId String   @map("test_case_id")
+  stepType   String   @map("step_type")
+  text       String
+  status     String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@index([testCaseId])
+  @@map("steps")
+}
+
+/// A saved feature specification (raw Gherkin/Robot content).
+model TestSpec {
+  id        String @id
+  name      String
+  category  String
+  tags      String
+  content   String
+  createdAt String @map("created_at")
+
+  @@map("test_specs")
+}
+
+/// A logical folder used to organize sphere test cases.
+model TestFolder {
+  path String @id
+
+  @@map("test_folders")
+}
+
+/// A rich, editable test case (Sphere-style) with history.
+model TestCaseSphere {
+  id             String            @id
+  folder         String
+  title          String
+  preconditions  String            @default("")
+  steps          String            @default("")
+  expectedResult String            @default("") @map("expected_result")
+  observation    String?
+  createdAt      String            @map("created_at")
+  history        TestCaseHistory[]
+
+  @@index([folder])
+  @@map("test_cases_sphere")
+}
+
+/// An audit-trail entry for a sphere test case.
+model TestCaseHistory {
+  id         Int            @id @default(autoincrement())
+  testCaseId String         @map("test_case_id")
+  user       String
+  action     String
+  time       String
+  testCase   TestCaseSphere @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@index([testCaseId])
+  @@map("test_case_history")
+}

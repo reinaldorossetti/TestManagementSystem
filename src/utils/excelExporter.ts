@@ -117,8 +117,11 @@ export const handleExportToExcel = async (
   testCases: DbTestCaseSphere[],
   folders: string[],
   customSqlQueries: { [key: string]: string } = {},
-  customScriptLanguages: { [key: string]: string } = {}
+  customScriptLanguages: { [key: string]: string } = {},
+  statusByCaseId: { [caseId: string]: 'Not executed' | 'PASS' | 'FAIL' | 'SKIP' } = {},
+  language: 'PT' | 'ENG' = 'PT'
 ) => {
+  void language;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TMS QA';
   workbook.lastModifiedBy = 'TMS QA';
@@ -319,21 +322,20 @@ export const handleExportToExcel = async (
     { header: 'SCRIPT AUTOMÁTICO (ROBOT)', key: 'robot_script', width: 40 },
   ];
 
-  // Helper selectors for dynamic execution statuses
+  // Resolves the real, persisted execution status for a case, mapping the
+  // internal status codes to the formal lifecycle labels (AGENTS.md). Cases that
+  // were never executed report "Not Started" instead of a fabricated result.
   const getLastExecutionStatus = (id: string): string => {
-    const sampleChar = id.slice(-1);
-    const codeNum = parseInt(sampleChar, 10);
-    if (isNaN(codeNum)) {
-      return 'Passed';
-    }
-    if (codeNum % 5 === 0) {
-      return 'Failed';
-    } else if (codeNum % 6 === 0) {
-      return 'Blocked';
-    } else if (codeNum % 4 === 0) {
-      return 'Skipped';
-    } else {
-      return 'Passed';
+    const status = statusByCaseId[id];
+    switch (status) {
+      case 'PASS':
+        return 'Passed';
+      case 'FAIL':
+        return 'Failed';
+      case 'SKIP':
+        return 'Skipped';
+      default:
+        return 'Not Started';
     }
   };
 

@@ -6,3 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# Prisma
+/generated/
+prisma/*.db
+prisma/*.db-journal

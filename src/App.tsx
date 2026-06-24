@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -49,6 +51,7 @@ import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/feat
 import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { handleExportToExcel } from './utils/excelExporter';
+import { useDatabase } from './hooks/useDatabase';
 
 // Helper to render terminal log lines beautifully with soft/light GIVEN, WHEN, THEN colors
 const renderLoggedStep = (text: string) => {
@@ -574,68 +577,15 @@ export default function App() {
     setModalNewTagLabel('');
   };
   
-  // Virtual SQLite State (persisted to LocalStorage optionally)
-  const [sqliteDb, setSqliteDb] = useState<VirtualDatabase>(() => {
-    const saved = localStorage.getItem('cardmais_sqlite_db');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        let changed = false;
-        
-        if (parsed && Array.isArray(parsed.executions)) {
-          parsed.executions = parsed.executions.map((e: any) => {
-            if (e.duration_ms !== undefined && e.duration_s === undefined) {
-              e.duration_s = parseFloat((e.duration_ms / 1000).toFixed(2));
-              delete e.duration_ms;
-              changed = true;
-            }
-            if (e.duration_s === undefined) {
-              e.duration_s = 0;
-              changed = true;
-            }
-            return e;
-          });
-        }
-        
-        if (parsed && Array.isArray(parsed.test_cases)) {
-          parsed.test_cases = parsed.test_cases.map((tc: any) => {
-            if (tc.duration_ms !== undefined && tc.duration_s === undefined) {
-              tc.duration_s = parseFloat((tc.duration_ms / 1000).toFixed(2));
-              delete tc.duration_ms;
-              changed = true;
-            }
-            if (tc.duration_s === undefined) {
-              tc.duration_s = 0;
-              changed = true;
-            }
-            return tc;
-          });
-        }
-
-        if (!parsed.test_specs) {
-          parsed.test_specs = INITIAL_DB_SEED.test_specs;
-          changed = true;
-        }
-
-        if (!parsed.test_cases_sphere) {
-          parsed.test_cases_sphere = INITIAL_DB_SEED.test_cases_sphere;
-          changed = true;
-        }
-
-        if (!parsed.test_folders) {
-          parsed.test_folders = INITIAL_DB_SEED.test_folders;
-          changed = true;
-        }
-
-        if (changed) {
-          localStorage.setItem('cardmais_sqlite_db', JSON.stringify(parsed));
-        }
-
-        return parsed;
-      } catch(e) {}
-    }
-    return INITIAL_DB_SEED;
-  });
+  // Virtual SQLite State, now backed by the Next.js backend (Prisma + SQLite).
+  // The hook loads a snapshot, persists changes through the API and keeps every
+  // open tab synchronized via BroadcastChannel.
+  const {
+    sqliteDb,
+    setSqliteDb,
+    reset: resetDatabaseRemote,
+    runSql: runSqlRemote,
+  } = useDatabase();
 
   // DB View Settings
   const [dbSearchQuery, setDbSearchQuery] = useState<string>('');
@@ -728,11 +678,9 @@ export default function App() {
   // Terminal scroll helper
   const terminalLogsBottomRef = useRef<HTMLDivElement>(null);
 
-  // Save SQLite State
+  // Recompute dashboard stats whenever the database changes.
+  // Persistence is handled by useDatabase (backend API), no longer localStorage.
   useEffect(() => {
-    localStorage.setItem('cardmais_sqlite_db', JSON.stringify(sqliteDb));
-    
-    // Re-verify general database stats summary
     const execs = sqliteDb.executions || [];
     const totalExecutions = execs.length;
     const totalDuration = execs.reduce((acc, c) => {
@@ -753,20 +701,10 @@ export default function App() {
     });
   }, [sqliteDb]);
 
-  // Synchronize state in real-time across tabs / windows via StorageEvent
+  // Synchronize UI-preference state across tabs via StorageEvent.
+  // Database synchronization is handled by useDatabase via BroadcastChannel.
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'cardmais_sqlite_db' && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setSqliteDb(parsed);
-          // Also automatically update the interactive database playground query output to keep it fresh
-          const resetRes = executeVirtualSQL(rawSqlInput, parsed);
-          setSqlResults(resetRes);
-        } catch (err) {
-          console.error("Erro ao sincronizar banco SQLite via StorageEvent:", err);
-        }
-      }
       if (e.key === 'cardmais_scenario_statuses' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
@@ -791,7 +729,7 @@ export default function App() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [rawSqlInput]);
+  }, []);
 
   // Command preview compiler helper
   const getCompiledCommand = () => {
@@ -913,37 +851,53 @@ export default function App() {
     }
   };
 
-  // SQLite manual SQL execute controller
-  const handleExecuteRawSQL = () => {
+  // SQLite manual SQL execute controller (read-only, runs on the backend).
+  const handleExecuteRawSQL = async () => {
     const start = performance.now();
-    const result = executeVirtualSQL(rawSqlInput, sqliteDb);
-    const end = performance.now();
-    
-    setSqlLatency(Number((end - start).toFixed(2)));
-    setSqlResults(result);
+    try {
+      const result = await runSqlRemote(rawSqlInput);
+      setSqlResults(result);
+    } catch (error) {
+      setSqlResults({
+        columns: [],
+        rows: [],
+        count: 0,
+        error: error instanceof Error ? error.message : 'Erro ao executar a consulta.',
+      });
+    } finally {
+      const end = performance.now();
+      setSqlLatency(Number((end - start).toFixed(2)));
+    }
   };
 
-  // Clean SQLite database
-  const handleResetDatabase = () => {
-    if (window.confirm("Deseja realmente limpar os registros de execuções do SQLite? (Isto reiniciará o banco para o estado inicial)")) {
-      setSqliteDb(INITIAL_DB_SEED);
-      setRawSqlInput('SELECT * FROM executions ORDER BY timestamp DESC');
-      const resetRes = executeVirtualSQL('SELECT * FROM executions ORDER BY timestamp DESC', INITIAL_DB_SEED);
-      setSqlResults(resetRes);
-      setTerminalLogs([]);
-
-      // Reset sphere test cases status
-      const initialObj: Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'> = {};
-      if (INITIAL_DB_SEED && INITIAL_DB_SEED.test_cases_sphere) {
-        INITIAL_DB_SEED.test_cases_sphere.forEach(tc => {
-          initialObj[tc.id] = 'Not executed';
-        });
-      }
-      setSphereTestCaseStatuses(initialObj);
-      localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(initialObj));
-
-      appendTerminalLog(`[SQLITE] Banco de dados local reiniciado com sucesso para as tabelas default.`, 'warn');
+  // Clean SQLite database (resets to the seed dataset on the backend).
+  const handleResetDatabase = async () => {
+    if (!window.confirm("Deseja realmente limpar os registros de execuções do SQLite? (Isto reiniciará o banco para o estado inicial)")) {
+      return;
     }
+
+    try {
+      await resetDatabaseRemote();
+    } catch (error) {
+      appendTerminalLog(`[SQLITE] Falha ao reiniciar o banco: ${error instanceof Error ? error.message : 'erro desconhecido'}`, 'error');
+      return;
+    }
+
+    setRawSqlInput('SELECT * FROM executions ORDER BY timestamp DESC');
+    setSqlResults({ columns: [], rows: [], count: 0 });
+    setTerminalLogs([]);
+
+    // Reset sphere test cases status
+    const initialObj: Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'> = {};
+    if (INITIAL_DB_SEED && INITIAL_DB_SEED.test_cases_sphere) {
+      INITIAL_DB_SEED.test_cases_sphere.forEach(tc => {
+        initialObj[tc.id] = 'Not executed';
+      });
+    }
+    setSphereTestCaseStatuses(initialObj);
+    localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(initialObj));
+
+    appendTerminalLog(`[SQLITE] Banco de dados local reiniciado com sucesso para as tabelas default.`, 'warn');
   };
 
   // --- TESTLINK SPECIFICATIONS CRUD ---
@@ -1874,7 +1828,7 @@ export default function App() {
                       alert(t("Não existem casos de teste cadastrados para exportar.", "There are no registered test cases to export."));
                       return;
                     }
-                    handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage);
+                    handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage, sphereTestCaseStatuses, language);
                     setToastMessage(t("Plataforma: Casos de teste exportados para Excel com sucesso!", "Platform: Test cases successfully exported to Excel!"));
                     setTimeout(() => setToastMessage(null), 3000);
                   }}
@@ -4225,7 +4179,7 @@ export default function App() {
                           alert("Não existem casos de teste cadastrados para exportar.");
                           return;
                         }
-                        handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage);
+                        handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage, sphereTestCaseStatuses, language);
                         setToastMessage("Plataforma: Casos de teste exportados para Excel com sucesso!");
                         setTimeout(() => setToastMessage(null), 3000);
                       }}
