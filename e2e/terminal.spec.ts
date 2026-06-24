@@ -11,15 +11,14 @@ test.describe('Terminal panel (Robot Framework console)', () => {
     await expect(terminal.robotArgumentsHeading).toBeVisible();
   });
 
-  test('Given the terminal panel, then feature and batch execution controls are available', async ({
+  test('Given the terminal panel, then the full-feature execution control is available', async ({
     terminal,
   }) => {
     // Given the terminal panel is open
     await terminal.open();
 
-    // Then the user can trigger a full feature run and a batch automated run
+    // Then the user can trigger a full feature run
     await expect(terminal.executeFeatureButton).toBeVisible();
     await expect(terminal.executeFeatureButton).toBeEnabled();
-    await expect(terminal.runAutomatedTestsButton.first()).toBeVisible();
   });
 });

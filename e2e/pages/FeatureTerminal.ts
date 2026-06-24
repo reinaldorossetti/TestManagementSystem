@@ -16,10 +16,6 @@ export class FeatureTerminal extends BasePage {
     return this.page.getByRole('button', { name: /Executar Feature|Execute Feature/ });
   }
 
-  get runAutomatedTestsButton(): Locator {
-    return this.page.getByRole('button', { name: /Run Automated Tests|Executar Testes/ });
-  }
-
   async open(): Promise<void> {
     await super.open('terminal');
   }

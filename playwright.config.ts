@@ -14,10 +14,14 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // The app is backed by a single SQLite file served by one `next start` process,
+  // so there is no per-test backend isolation. Running serially keeps the shared
+  // server/DB responsive and the suite deterministic (heavy parallelism starved
+  // the single Node process and left the client app unmounted).
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
   reporter: [['list'], ['html', { open: 'never' }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
