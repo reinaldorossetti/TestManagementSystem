@@ -677,10 +677,6 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                                           {/* ACCORDION EXPANSION OF GHERKIN / BDD STEP LOGS */}
                                           {isStepsExpanded && (
                                             <div className="mt-3 ml-7 pl-4.5 border-l-2 border-[#FF6600]/30 space-y-2.5 pt-2 pb-1 animate-slideDown text-left text-xs font-mono">
-                                              
-                                              <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-1 border-b border-slate-900 pb-1">
-                                                Test Step Execution Tracer (Virtual SQLite Logs)
-                                              </div>
 
                                               {stepsForCase.length === 0 ? (
                                                 <div className="text-slate-550 text-[10.5px] py-1">

@@ -188,4 +188,33 @@ Para aprimorar a maturidade do sistema de monitoramento de testes baseados em Ro
 3. **Restrições de Validação no Relatório Excel (.xlsx)**:
    - A biblioteca de geração de relatórios `ExcelJS` foi atualizada de forma congruente. A regra de validação em célula (`dataValidation`) agora aceita estritamente a lista de valores válidos e atualizados `Passed,Skipped,Failed,Blocked` em vez do formato anterior.
 
+---
+
+## 📑 Tela de Relatórios (Reports) e Exportação em PDF (Novo)
+
+A área de **Relatórios de Execução** (`src/components/ExecutionReports.tsx`) ganhou uma página própria via roteamento real do App Router e um exportador de PDF dedicado (`src/utils/pdfExporter.ts`, função `handleExportExecutionReportToPDF`) que espelha fielmente o layout exibido em tela.
+
+1. **Rota Própria por Feature (App Router)**:
+   - A antiga navegação por query param (`/?tab=reports`) foi promovida a uma rota dedicada **`/reports`** (assim como `/terminal`, `/sqlite` e `/tms`), reutilizando o shell do App.
+   - Um `middleware.ts` mantém compatibilidade, redirecionando `/` e `/?tab=x` para a rota correspondente `/x`.
+
+2. **Identidade Visual e Conteúdo do Cabeçalho**:
+   - O texto **"ALLURE 3 DEMO PORTAL" foi removido** definitivamente da tela de relatórios.
+   - O foco de execução passou a ser exibido como **`Feature: <nome_da_feature>`** (sem o prefixo `@`), sempre derivado do nome da feature — substituindo o antigo formato `Foco na Tag: @login_tests`.
+
+3. **Botão "Exportar PDF" (Relatório de Execução)**:
+   - Adicionado no cabeçalho do detalhe do relatório, acionando `handleExportExecutionReportToPDF`.
+   - O PDF reproduz **exatamente** o layout escuro da tela: hero com badge de status, `Feature: ...`, data, comando Robot, **gauge donut multi-segmento** (verde Aprovado → vermelho Falho → âmbar Ignorado, espelhando o `conic-gradient`), cartões KPI (Total, Failed, Broken, Passed, Skipped) e a árvore de cenários.
+   - **Glifos vetoriais**: como as fontes padrão do `jsPDF` não possuem `✔`/`✖`, os ícones circulares de status (passos e casos) e as marcas dos chips são **desenhados vetorialmente** para preservar a fidelidade visual.
+
+4. **Árvore de Cenários no PDF (paridade com a tela)**:
+   - Cabeçalho `Gherkin Workspace Syntax: <arquivo>.feature`, linha `Environment: "ubuntu-latest"` com **barra de proporção segmentada**, faixa de categoria `[Categoria]` com `N cenários` e **chips coloridos** de contagem (aprovados/falhos/ignorados).
+   - Cada caso: ícone circular de status à esquerda, badge de ID, `(BDD scenario)`, nome em negrito, duração e indicador de passos.
+   - Passos: ícone de status + **badge de keyword** tingido (`GIVEN` azul, `WHEN` âmbar, `THEN` verde, `AND` cinza) + texto entre aspas + valor à direita (`65ms` / `FAIL` / `SKIP`). Quando não há passos, exibe a mensagem idêntica à da tela.
+
+5. **Regra de Layout — Detalhamento Limpo dos Testes**:
+   - O rótulo **"Test Step Execution Tracer (Virtual SQLite Logs)"** foi **removido** tanto da tela quanto do PDF; o detalhamento dos passos não deve exibir esse cabeçalho.
+   - Deve haver **espaçamento vertical confortável** entre o nome do caso de teste e o bloco de detalhamento (passos), evitando que fiquem colados.
+   - **Regra permanente**: a exportação em PDF do relatório de execução deve sempre seguir **exatamente** o mesmo layout da página de Reports. Qualquer alteração visual feita na tela deve ser refletida no PDF (e vice-versa) para manter a paridade.
+
 

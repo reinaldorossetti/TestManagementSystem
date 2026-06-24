@@ -206,6 +206,44 @@ export const handleExportTestCasesToPDF = (
       return w;
     };
 
+    // Reports-style visual language helpers (shared look with the execution report PDF).
+    const STATUS_ICON: Record<StatusLabel, { color: RGB; glyph: 'check' | 'x' | 'dash' }> = {
+      Passed: { color: [16, 185, 129], glyph: 'check' },
+      Failed: { color: [244, 63, 94], glyph: 'x' },
+      Skipped: { color: [245, 158, 11], glyph: 'dash' },
+      Blocked: { color: [251, 146, 60], glyph: 'x' },
+      'Not Started': { color: [100, 116, 139], glyph: 'dash' },
+    };
+
+    /** Draws a circular status indicator with a vector check / x / dash glyph. */
+    const drawStatusIcon = (cx: number, cy: number, r: number, status: StatusLabel) => {
+      const { color, glyph } = STATUS_ICON[status] || STATUS_ICON['Not Started'];
+      doc.setDrawColor(color[0], color[1], color[2]);
+      doc.setFillColor(2, 6, 16);
+      doc.setLineWidth(0.4);
+      doc.circle(cx, cy, r, 'FD');
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(color[0], color[1], color[2]);
+      if (glyph === 'check') {
+        doc.line(cx - r * 0.45, cy + r * 0.05, cx - r * 0.05, cy + r * 0.45);
+        doc.line(cx - r * 0.05, cy + r * 0.45, cx + r * 0.55, cy - r * 0.45);
+      } else if (glyph === 'x') {
+        doc.line(cx - r * 0.4, cy - r * 0.4, cx + r * 0.4, cy + r * 0.4);
+        doc.line(cx - r * 0.4, cy + r * 0.4, cx + r * 0.4, cy - r * 0.4);
+      } else {
+        doc.line(cx - r * 0.45, cy, cx + r * 0.45, cy);
+      }
+    };
+
+    /** Tinted keyword badge colors (mirrors the execution report step badges). */
+    const keywordTint = (keyword: string): { bg: RGB; fg: RGB } => {
+      const k = keyword.toUpperCase();
+      if (k === 'DADO' || k === 'DADA' || k === 'GIVEN') return { bg: [12, 33, 61], fg: [56, 189, 248] };
+      if (k === 'QUANDO' || k === 'WHEN') return { bg: [49, 34, 7], fg: [251, 191, 36] };
+      if (k === 'ENTÃO' || k === 'ENTAO' || k === 'THEN') return { bg: [6, 46, 33], fg: [52, 211, 153] };
+      return { bg: [30, 41, 59], fg: [148, 163, 184] };
+    };
+
     // ---- Stats ----
     const statusCounts: Record<StatusLabel, number> = {
       Passed: 0,
@@ -333,20 +371,35 @@ export const handleExportTestCasesToPDF = (
       const criticality = getCriticalityLevel(severity, tc.id);
       const statusLabel = getStatusLabel(statusByCaseId[tc.id]);
 
-      checkPageBreak(20);
+      checkPageBreak(22);
 
-      // Case header strip
+      // ---- Case header card (reports-style row) ----
       const stripY = currentY;
-      doc.setFillColor(17, 24, 39);
-      doc.roundedRect(marginX, stripY, contentWidth, 8.5, 1.5, 1.5, 'F');
-      doc.setFillColor(255, 102, 0);
-      doc.rect(marginX, stripY, 1.2, 8.5, 'F');
+      const stripH = 9;
+      doc.setFillColor(2, 6, 16);
+      doc.setDrawColor(20, 27, 45);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(marginX, stripY, contentWidth, stripH, 1.5, 1.5, 'FD');
+
+      // Status icon
+      drawStatusIcon(marginX + 5.5, stripY + stripH / 2, 2.2, statusLabel);
 
       // ID badge
       doc.setFont('courier', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(255, 255, 255);
-      doc.text(tc.id, marginX + 4, stripY + 5.6);
+      doc.setFontSize(6.5);
+      const idW = doc.getTextWidth(tc.id) + 4;
+      doc.setFillColor(15, 23, 42);
+      doc.setDrawColor(30, 41, 59);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(marginX + 9.5, stripY + 2.5, idW, 4, 0.8, 0.8, 'FD');
+      doc.setTextColor(148, 163, 184);
+      doc.text(tc.id, marginX + 11.5, stripY + 5.3);
+
+      // "(test case)" tag
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(100, 116, 139);
+      doc.text(t('(caso de teste)', '(test case)'), marginX + 9.5 + idW + 2, stripY + 5.3);
 
       // Pills (right aligned): status, criticality, severity
       let pillX = pageWidth - marginX - 4;
@@ -356,31 +409,31 @@ export const handleExportTestCasesToPDF = (
         return doc.getTextWidth(statusLabel) + 5;
       })();
       pillX -= statusW;
-      drawPill(pillX, stripY + 2.2, statusLabel, STATUS_COLORS[statusLabel]);
+      drawPill(pillX, stripY + 2.3, statusLabel, STATUS_COLORS[statusLabel]);
 
       const critLabel = `CRIT: ${criticality}`;
       doc.setFontSize(6);
       const critW = doc.getTextWidth(critLabel) + 5;
       pillX -= critW + 2;
-      drawPill(pillX, stripY + 2.2, critLabel, SEVERITY_COLORS[criticality]);
+      drawPill(pillX, stripY + 2.3, critLabel, SEVERITY_COLORS[criticality]);
 
       const sevLabel = `SEV: ${severity}`;
       const sevW = doc.getTextWidth(sevLabel) + 5;
       pillX -= sevW + 2;
-      drawPill(pillX, stripY + 2.2, sevLabel, SEVERITY_COLORS[severity]);
+      drawPill(pillX, stripY + 2.3, sevLabel, SEVERITY_COLORS[severity]);
 
-      currentY += 11;
+      currentY += stripH + 4;
 
-      // Title
+      // Title (bold, second line under the card)
       let displayTitle = tc.title;
       if (displayTitle.startsWith(tc.id)) {
         displayTitle = displayTitle.substring(tc.id.length).replace(/^[\s:-]+/, '').trim();
       }
-      addWrappedText(displayTitle, marginX + 2, contentWidth - 4, 9, [255, 255, 255], 'helvetica', 'bold', 4.5);
+      addWrappedText(displayTitle, marginX + 4, contentWidth - 8, 9, [226, 232, 240], 'helvetica', 'bold', 4.5);
 
       // Folder line
-      addWrappedText(`${t('Pasta', 'Folder')}: ${tc.folder}`, marginX + 2, contentWidth - 4, 7, [100, 116, 139], 'helvetica', 'normal', 3.6);
-      currentY += 1;
+      addWrappedText(`${t('Pasta', 'Folder')}: ${tc.folder}`, marginX + 4, contentWidth - 8, 7, [100, 116, 139], 'helvetica', 'normal', 3.6);
+      currentY += 2;
 
       // Preconditions
       if (tc.preconditions?.trim()) {
@@ -389,7 +442,7 @@ export const handleExportTestCasesToPDF = (
         currentY += 1;
       }
 
-      // Gherkin steps
+      // Gherkin steps (reports-style rows: orange accent + tinted badge + quoted text)
       if (tc.steps?.trim()) {
         addSectionLabel(t('Cenário / Passos Gherkin BDD', 'Scenario / Gherkin BDD Steps'));
         tc.steps
@@ -397,37 +450,47 @@ export const handleExportTestCasesToPDF = (
           .map((l) => l.trim())
           .filter((l) => l.length > 0)
           .forEach((line) => {
-            checkPageBreak(5.5);
+            checkPageBreak(6.5);
+            const stepY = currentY;
+            const rowLeft = marginX + 8;
+            const rowRight = pageWidth - marginX - 2;
+            const rowW = rowRight - rowLeft;
+
+            // Orange left accent (mirrors border-l-2 border-[#FF6600]/30)
+            doc.setDrawColor(255, 102, 0);
+            doc.setLineWidth(0.5);
+            doc.line(marginX + 5, stepY - 3.2, marginX + 5, stepY + 1.6);
+
+            doc.setFillColor(8, 11, 22);
+            doc.setDrawColor(17, 24, 39);
+            doc.setLineWidth(0.2);
+            doc.roundedRect(rowLeft, stepY - 3.2, rowW, 5, 0.8, 0.8, 'FD');
+
             const match = line.match(GHERKIN_KEYWORDS);
-            if (match) {
-              const keyword = match[1];
-              const rest = line.substring(keyword.length).trim();
-              const colors = keywordBadgeColors(keyword);
-              const badgeLabel = keyword.toUpperCase();
+            const keyword = match ? match[1] : '';
+            const rest = match ? line.substring(keyword.length).trim() : line;
+            let textX = rowLeft + 2;
+
+            if (keyword) {
+              const kw = keywordTint(keyword);
               doc.setFont('helvetica', 'bold');
               doc.setFontSize(5.5);
-              const badgeW = doc.getTextWidth(badgeLabel) + 4;
-              doc.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
-              doc.roundedRect(marginX + 4, currentY - 3, badgeW, 4, 0.8, 0.8, 'F');
-              doc.setTextColor(colors.fg[0], colors.fg[1], colors.fg[2]);
-              doc.text(badgeLabel, marginX + 6, currentY - 0.2);
-
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(7.5);
-              doc.setTextColor(226, 232, 240);
-              const textX = marginX + 4 + badgeW + 2;
-              const restLines = doc.splitTextToSize(rest, pageWidth - marginX - textX) as string[];
-              doc.text(restLines[0] || '', textX, currentY);
-              currentY += 4.5;
-              // Continuation lines (wrapped) indented under the text
-              restLines.slice(1).forEach((cont) => {
-                checkPageBreak(4.5);
-                doc.text(cont, textX, currentY);
-                currentY += 4.5;
-              });
-            } else {
-              addWrappedText(line, marginX + 6, contentWidth - 10, 7.5, [203, 213, 225], 'helvetica', 'normal', 4.5);
+              const kwLabel = keyword.toUpperCase();
+              const kwW = doc.getTextWidth(kwLabel) + 3.5;
+              doc.setFillColor(kw.bg[0], kw.bg[1], kw.bg[2]);
+              doc.roundedRect(rowLeft + 2, stepY - 2.5, kwW, 3.6, 0.6, 0.6, 'F');
+              doc.setTextColor(kw.fg[0], kw.fg[1], kw.fg[2]);
+              doc.text(kwLabel, rowLeft + 3.7, stepY);
+              textX = rowLeft + 2 + kwW + 2;
             }
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.8);
+            doc.setTextColor(203, 213, 225);
+            const txtMaxW = rowRight - 2 - textX;
+            const stepLine = (doc.splitTextToSize(`"${rest}"`, txtMaxW) as string[])[0] || '';
+            doc.text(stepLine, textX, stepY);
+            currentY += 6;
           });
         currentY += 1;
       }
@@ -455,12 +518,15 @@ export const handleExportTestCasesToPDF = (
     });
 
     function addSectionLabel(label: string) {
-      checkPageBreak(6);
+      checkPageBreak(7);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 102, 0);
-      doc.text(label.toUpperCase(), marginX + 2, currentY);
-      currentY += 4;
+      doc.setFontSize(5.8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(label.toUpperCase(), marginX + 4, currentY);
+      doc.setDrawColor(20, 27, 45);
+      doc.setLineWidth(0.2);
+      doc.line(marginX + 4, currentY + 1.2, pageWidth - marginX - 2, currentY + 1.2);
+      currentY += 4.5;
     }
 
     const fileName = `Plano_de_Testes_QA_TMS_${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -943,17 +1009,6 @@ export const handleExportExecutionReportToPDF = (
         const nameLine = (doc.splitTextToSize(tc.name, nameMaxW) as string[])[0] || '';
         doc.text(nameLine, marginX + 11, rowY + 8.8);
         currentY += rowH + 6;
-
-        // Steps tracer label
-        checkPageBreak(7);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(5.8);
-        doc.setTextColor(100, 116, 139);
-        doc.text('TEST STEP EXECUTION TRACER (VIRTUAL SQLITE LOGS)', marginX + 10, currentY);
-        doc.setDrawColor(20, 27, 45);
-        doc.setLineWidth(0.2);
-        doc.line(marginX + 10, currentY + 1.2, pageWidth - marginX - 4, currentY + 1.2);
-        currentY += 4;
 
         const caseSteps = steps.filter((s) => s.test_case_id === tc.id);
         if (caseSteps.length === 0) {
