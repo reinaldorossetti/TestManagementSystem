@@ -48,10 +48,11 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/featureLoader';
-import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere } from './utils/sqliteEngine';
+import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { handleExportToExcel } from './utils/excelExporter';
 import { useDatabase } from './hooks/useDatabase';
+import { createTranslator } from './utils/i18n';
 
 // Helper to render terminal log lines beautifully with soft/light GIVEN, WHEN, THEN colors
 const renderLoggedStep = (text: string) => {
@@ -287,7 +288,7 @@ export default function App() {
       console.error("Syntax error parsing Gherkin:", e);
     }
   }, [gherkinContent]);
-  const [scenarioStatuses, setScenarioStatuses] = useState<Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'>>(() => {
+  const [scenarioStatuses, setScenarioStatuses] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem('cardmais_scenario_statuses');
     if (saved) {
       try { return JSON.parse(saved); } catch(e) {}
@@ -304,7 +305,7 @@ export default function App() {
     localStorage.setItem('cardmais_scenario_statuses', JSON.stringify(scenarioStatuses));
   }, [scenarioStatuses]);
 
-  const [sphereTestCaseStatuses, setSphereTestCaseStatuses] = useState<Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'>>(() => {
+  const [sphereTestCaseStatuses, setSphereTestCaseStatuses] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem('cardmais_sphere_statuses');
     if (saved) {
       try { return JSON.parse(saved); } catch(e) {}
@@ -336,9 +337,7 @@ export default function App() {
     localStorage.setItem('qa_tms_lang', language);
   }, [language]);
 
-  const t = (pt: string, en: string) => {
-    return language === 'PT' ? pt : en;
-  };
+  const t = createTranslator(language);
 
   // Command configurations
   const [executionTags, setExecutionTags] = useState<{ value: string; label: string }[]>(() => {
@@ -461,8 +460,9 @@ export default function App() {
         setFilterTag('all_scenarios');
         appendTerminalLog(`[TAGS] Lista de tags resetada para a suite completa. Nenhum tag específica encontrada.`, 'info');
       }
-    } catch (e: any) {
-      appendTerminalLog(`[ERROR] Erro ao carregar arquivo importado: ${e.message}`, 'error');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      appendTerminalLog(`[ERROR] Erro ao carregar arquivo importado: ${message}`, 'error');
       alert("Erro ao decodificar o arquivo. Certifique-se de que é um formato válido BDD ou Gherkin.");
     }
   };
@@ -594,7 +594,7 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
       if (tabParam === 'terminal' || tabParam === 'sqlite' || tabParam === 'reports' || tabParam === 'tms') {
-        return tabParam as any;
+        return tabParam;
       }
     }
     return 'terminal';
@@ -615,9 +615,9 @@ export default function App() {
 
   // Interactive SQL Console Query State
   const [rawSqlInput, setRawSqlInput] = useState<string>('SELECT * FROM executions ORDER BY timestamp DESC');
-  const [sqlResults, setSqlResults] = useState<{ columns: string[]; rows: any[]; error?: string; count: number }>({
+  const [sqlResults, setSqlResults] = useState<{ columns: string[]; rows: Record<string, unknown>[]; error?: string; count: number }>({
     columns: ['id', 'timestamp', 'command', 'duration_s', 'total_tests', 'passed', 'failed', 'status'],
-    rows: INITIAL_DB_SEED.executions,
+    rows: INITIAL_DB_SEED.executions as unknown as Record<string, unknown>[],
     count: INITIAL_DB_SEED.executions.length
   });
   const [sqlLatency, setSqlLatency] = useState<number | null>(null);
@@ -684,7 +684,7 @@ export default function App() {
     const execs = sqliteDb.executions || [];
     const totalExecutions = execs.length;
     const totalDuration = execs.reduce((acc, c) => {
-      const val = c.duration_s !== undefined ? c.duration_s : ((c as any).duration_ms !== undefined ? (c as any).duration_ms / 1000 : 0);
+      const val = c.duration_s ?? 0;
       return acc + (val || 0);
     }, 0);
     const averageDuration = totalExecutions > 0 ? parseFloat((totalDuration / totalExecutions).toFixed(2)) : 0;
@@ -972,7 +972,7 @@ export default function App() {
     setFormSpecContent(`Feature: Nova Especificação Criada\n  Como QA da TMS\n  Quero validar um novo cenário do sistema\n\n  Scenario: Novo Cenário de Teste BDD\n    Dado que o usuário abriu a nova seção de automação\n    Quando realiza a interação com os cards de teste\n    Então o sistema deve registrar a ação com sucesso.`);
   };
 
-  const handleOpenEditSpec = (spec: any) => {
+  const handleOpenEditSpec = (spec: DbTestSpec) => {
     setIsEditingSpec(true);
     setIsCreatingSpec(false);
     setFormSpecId(spec.id);
@@ -1283,7 +1283,7 @@ export default function App() {
     }
   };
 
-  const handleLoadMultipleTestCasesToWorkspace = (cases: any[]) => {
+  const handleLoadMultipleTestCasesToWorkspace = (cases: DbTestCaseSphere[]) => {
     if (!cases || cases.length === 0) return;
 
     const firstCase = cases[0];
@@ -1337,7 +1337,7 @@ export default function App() {
       : [...existingFolders, folderName];
 
     const currentCases = sqliteDb.test_cases_sphere || [];
-    const newCasesAdded: any[] = [];
+    const newCasesAdded: DbTestCaseSphere[] = [];
 
     parsed.scenarios.forEach((sc, index) => {
       let caseId = "";
@@ -3253,11 +3253,9 @@ export default function App() {
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                       row.status === 'PASS' 
                                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                                        : row.status === 'SKIP'
-                                          ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                                     }`}>
-                                      {row.status === 'PASS' ? 'Passed' : (row.status === 'FAIL' ? 'Failed' : (row.status === 'SKIP' ? 'Skipped' : row.status))}
+                                      {row.status === 'PASS' ? 'Passed' : 'Failed'}
                                     </span>
                                   </td>
                                 </tr>
@@ -3593,7 +3591,7 @@ export default function App() {
             </div>
           )}
 
-            {/* REMOVED OLD VIEWS */}
+            {/* Legacy analytics/artifacts dashboard removed (was dead code behind `false &&`). */}
             {false && (() => {
               const last10 = sqliteDb.executions.slice(0, 10);
               const passCount = last10.filter(e => e.status === 'PASS').length;
@@ -5008,26 +5006,17 @@ export default function App() {
                       window.open(`${window.location.origin}/?tab=tms`, '_blank');
                       setIsNavDrawerOpen(false);
                     }}
-                    className={`p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] ${
-                      activeTab === 'tms'
-                        ? 'bg-sky-500/15 border-sky-500 shadow-md shadow-sky-500/5'
-                        : 'bg-slate-950 border-slate-800/80 hover:border-sky-500/30'
-                    }`}
+                    className="p-4 rounded-xl border flex flex-col gap-2.5 transition-all text-left cursor-pointer group active:scale-[0.98] bg-slate-950 border-slate-800/80 hover:border-sky-500/30"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <div className={`p-1.5 rounded-lg border ${activeTab === 'tms' ? 'bg-sky-600 text-white' : 'bg-slate-900 border-slate-800 text-sky-400'}`}>
+                        <div className="p-1.5 rounded-lg border bg-slate-900 border-slate-800 text-sky-400">
                           <Database className="w-4 h-4" />
                         </div>
-                        <h4 className={`font-bold text-xs ${activeTab === 'tms' ? 'text-white' : 'text-slate-200 group-hover:text-sky-400'} transition-colors`}>
+                        <h4 className="font-bold text-xs text-slate-200 group-hover:text-sky-400 transition-colors">
                           TMS - Casos de Teste (Standalone) ↗
                         </h4>
                       </div>
-                      {activeTab === 'tms' && (
-                        <span className="text-[9px] font-mono bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded font-black uppercase">
-                          ATIVO
-                        </span>
-                      )}
                     </div>
                     <p className="text-[11px] text-slate-400 leading-normal font-mono text-left">
                       Central avançada de gestão de casos de teste em tela cheia com fundo branco. Sincroniza em tempo real.

@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { DbExecution, VirtualDatabase, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
+import { createTranslator } from '../utils/i18n';
 import { 
   Calendar, 
   Clock, 
@@ -49,9 +50,7 @@ interface ExecutionReportsProps {
 }
 
 export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, language = 'PT', onChangeLanguage }: ExecutionReportsProps) {
-  const t = (pt: string, en: string) => {
-    return language === 'PT' ? pt : en;
-  };
+  const t = createTranslator(language);
 
   // General states
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -489,7 +488,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                     <span className="font-mono text-slate-500">{t("Classificar por:", "Sort by:")}</span>
                     <select
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
+                      onChange={(e) => setSortBy(e.target.value as 'earliest' | 'duration' | 'name')}
                       className="bg-slate-950 text-slate-200 border border-slate-850 rounded px-2 py-1 font-mono text-[11px] focus:outline-none focus:border-[#FF6600]"
                     >
                       <option value="earliest">{t("Nativo (Id)", "Native (Id)")}</option>

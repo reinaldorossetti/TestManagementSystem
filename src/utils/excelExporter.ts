@@ -118,7 +118,7 @@ export const handleExportToExcel = async (
   folders: string[],
   customSqlQueries: { [key: string]: string } = {},
   customScriptLanguages: { [key: string]: string } = {},
-  statusByCaseId: { [caseId: string]: 'Not executed' | 'PASS' | 'FAIL' | 'SKIP' } = {},
+  statusByCaseId: { [caseId: string]: string } = {},
   language: 'PT' | 'ENG' = 'PT'
 ) => {
   void language;
@@ -606,15 +606,47 @@ export const handleExportToExcel = async (
 
   // Generate buffer and trigger secure native browser file download (using actual .xlsx mime-type)
   const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const fileName = `Plano_de_Testes_QA_Platform_TMS_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+  triggerBrowserDownload(blob, fileName);
+};
+
+/**
+ * Saves a Blob to disk as a real file download.
+ *
+ * The buffer above is produced asynchronously (`await writeBuffer`), so by the
+ * time we click the anchor the original user gesture is gone. If the object URL
+ * is revoked synchronously right after `click()`, Chromium aborts the in-flight
+ * download and falls back to *navigating* to the blob URL (opening it in a new
+ * tab as `blob:http://...`). We therefore defer revocation so the browser can
+ * read the blob first, and keep the anchor hidden and same-tab to guarantee a
+ * download instead of navigation.
+ */
+const triggerBrowserDownload = (blob: Blob, fileName: string): void => {
+  const legacyNavigator = window.navigator as Navigator & {
+    msSaveOrOpenBlob?: (blob: Blob, defaultName?: string) => boolean;
+  };
+  if (typeof legacyNavigator.msSaveOrOpenBlob === 'function') {
+    legacyNavigator.msSaveOrOpenBlob(blob, fileName);
+    return;
+  }
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  
-  // High contrast clean standard name with matching safe xlsx extension to prevent prompt errors
-  link.download = `Plano_de_Testes_QA_Platform_TMS_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  link.download = fileName;
+  link.rel = 'noopener';
+  link.target = '_self';
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  // Defer cleanup: revoking immediately races the browser's download fetch.
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1500);
 };

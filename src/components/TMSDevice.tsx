@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   RotateCcw
 } from 'lucide-react';
+import { createTranslator } from '../utils/i18n';
 
 interface TMSDeviceProps {
   currentScreen: 'login' | 'association' | 'onboarding_intro' | 'onboarding_details' | 'confirmation_dados';
@@ -59,9 +60,7 @@ export default function TMSDevice({
   onResetEmulator,
   language = 'PT'
 }: TMSDeviceProps) {
-  const t = (pt: string, en: string) => {
-    return language === 'PT' ? pt : en;
-  };
+  const t = createTranslator(language);
 
   const [showPassword, setShowPassword] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);

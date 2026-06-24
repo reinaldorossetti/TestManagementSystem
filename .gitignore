@@ -16,3 +16,10 @@ next-env.d.ts
 /generated/
 prisma/*.db
 prisma/*.db-journal
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/.playwright-mcp/
