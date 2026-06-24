@@ -1,30 +1,280 @@
 # Centro de Execução QA TMS - Documentação Técnica do Projeto
 
-Bem-vindo ao **Centro de Execução QA TMS**! Este é um integrador e simulador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com recursos avançados de execução focada, parser resiliente e persistência de dados estruturados em um banco de dados relacional **SQLite local** virtualizado no próprio navegador (via memory/WebSQL/IndexedDB local client stream).
+Bem-vindo ao **Centro de Execução QA TMS**! Este é um integrador e simulador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com recursos avançados de execução focada, parser resiliente e persistência de dados estruturados em um banco de dados relacional **SQLite real**.
 
-Este documento detalha o funcionamento técnico, a arquitetura do simulador de testes, as regras de negócio de parsing, os mecanismos de sincronização e o design relacional do banco de dados SQLite.
+A aplicação é construída como um projeto **full-stack Next.js 16 (App Router)**: o frontend em **React 19** e o backend (Route Handlers + camada de serviços) convivem no mesmo projeto. A persistência usa **SQLite via Prisma 7** (com o driver adapter `@prisma/adapter-libsql`), e a sincronização em tempo real entre abas é feita pelo **`BroadcastChannel`** do HTML5.
+
+Este documento detalha o funcionamento técnico, a arquitetura full-stack, as regras de negócio de parsing, os mecanismos de sincronização, o design relacional do banco e como instalar, executar e testar o projeto.
+
+> ℹ️ **Nota de arquitetura:** versões anteriores deste projeto rodavam em Vite + Express com SQLite virtualizado no navegador (localStorage + `StorageEvent`). O projeto foi migrado para **Next.js 16 + Prisma + SQLite real**, com uma camada de dados em `src/server` (repositories/services/validation) exposta por uma API REST em `app/api`.
 
 ---
 
 ## 🏗️ Visão Geral e Arquitetura
 
-O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamentos, recargas e transações no app TMS. Ele é composto por quatro módulos principais:
+O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamentos, recargas e transações no app TMS. A arquitetura é full-stack e segue um fluxo cliente → API → camada de dados → SQLite:
 
 ```
-[ Upload Gherkin/Robot ] ──> [ Parser Inteligente (featureLoader.ts) ]
-                                    │
-                                    ├──> [ Visualizador de Cenários & Workspace ]
-                                    │      └──> Botão "Execução" (Execução Focada)
-                                    │
-                                    └──> [ Terminal Virtual (Execução Canônica) ]
-                                           ├──> Botão "Executar Feature" (Completa)
-                                           └──> Banco de Dados SQLite Relacional
+                         NEXT.JS 16 (App Router)
+┌───────────────────────────── Cliente (React 19) ─────────────────────────────┐
+│  Upload Gherkin/Robot ──> Parser (src/utils/featureLoader.ts)                  │
+│        │                                                                       │
+│        ├─> Workspace / Cartões ─> "Execução" (focada)                         │
+│        ├─> Terminal Virtual ────> "Executar Feature" (completa)               │
+│        ├─> Navegador SQLite (tabelas + Console RAW SQL)                        │
+│        ├─> Relatórios (estilo Allure) + Exportação Excel (.xlsx)              │
+│        └─> TMS Standalone (gestão de casos de teste)                           │
+│                              │                                                 │
+│                  useDatabase() + BroadcastChannel (sync entre abas)            │
+└──────────────────────────────────┬────────────────────────────────────────────┘
+                                    │  fetch (apiClient)
+┌──────────────────────────────── Servidor ────────────────────────────────────┐
+│  Route Handlers (app/api/**)                                                   │
+│        └─> Services (src/server/services) ─> validação Zod (src/server/...)    │
+│              └─> Repositories (src/server/repositories)                        │
+│                    └─> Prisma Client (src/lib/db.ts) ─> SQLite (prisma/dev.db) │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Parser Sintático (`featureLoader.ts`)**: Mapeia arquivos do Robot Framework e Gherkin tradicional, extraindo metadados estruturados, tags e cenários.
-2. **Dashboard de Monitoria (Interface Principal)**: Apresenta os cenários em formato de cartões interativos organizados por status, tags e módulos, fornecendo detalhes dos passos BDD executados.
-3. **Mecanismo de Execução Assistida**: Permite simular a execução de testes baseados em Robot Framework em dois níveis (completo vs. focado), gerando relatórios de log idênticos aos terminais shell reais do Robot.
-4. **Camada de Dados Virtualizada (Navegador SQLite)**: Fornece um painel interativo que reflete e armazena os esquemas relacionais das execuções e histórico de forma nativa e persistente.
+1. **Parser Sintático (`src/utils/featureLoader.ts`)**: Mapeia arquivos do Robot Framework e Gherkin tradicional, extraindo metadados estruturados, tags e cenários.
+2. **Dashboard de Monitoria (Cliente React)**: Apresenta os cenários em cartões interativos organizados por status, tags e módulos, com os passos BDD executados.
+3. **Mecanismo de Execução Assistida**: Simula a execução em dois níveis (completo vs. focado), gerando logs idênticos aos terminais shell reais do Robot.
+4. **API REST (`app/api/**`)**: Route Handlers que expõem o snapshot do banco, execuções, specs, casos de teste, pastas e consultas SQL somente-leitura.
+5. **Camada de Dados (`src/server/**`)**: Repositories + Services + validação Zod sobre o Prisma Client, garantindo separação de responsabilidades (SOLID).
+6. **Persistência SQLite real (`prisma/`)**: Banco relacional gerenciado por Prisma 7, consultável também pelo painel **Navegador SQLite**.
+
+---
+
+## 🧰 Stack Tecnológico
+
+| Camada | Tecnologia | Versão |
+|---|---|---|
+| Framework full-stack | **Next.js** (App Router + Turbopack) | 16 |
+| UI | **React** + **React DOM** | 19 |
+| Linguagem | **TypeScript** (modo `strict`) | 5.8 |
+| ORM | **Prisma** + `@prisma/adapter-libsql` | 7 |
+| Banco de dados | **SQLite** (via `@libsql/client`) | — |
+| Validação | **Zod** | 4 |
+| Estilização | **Tailwind CSS** (`@tailwindcss/postcss`) | 4 |
+| Ícones / Animação | **lucide-react**, **motion**, **recharts** | — |
+| Exportação | **ExcelJS** | 4 |
+| Testes E2E | **Playwright** (`@playwright/test`) | 1.61 |
+| Runtime de scripts | **tsx** (seed) | 4 |
+
+---
+
+## 📦 Instalação Passo a Passo
+
+### Pré-requisitos
+- **Node.js** 20+ (recomendado LTS) e **npm** 10+.
+- Git para clonar o repositório.
+
+### 1. Clonar o repositório
+```bash
+git clone <url-do-repositorio> TestManagementSystem
+cd TestManagementSystem
+```
+
+### 2. Instalar as dependências
+```bash
+npm install
+```
+> O hook `postinstall` executa `prisma generate` automaticamente, criando o Prisma Client em `generated/prisma`.
+
+### 3. Configurar as variáveis de ambiente
+Crie um arquivo `.env` na raiz (use o `.env.example` como base):
+```bash
+# Windows (PowerShell)
+Copy-Item .env.example .env
+# Linux / macOS
+cp .env.example .env
+```
+Conteúdo mínimo do `.env`:
+```env
+DATABASE_URL="file:./prisma/dev.db"
+```
+
+### 4. Criar o schema do banco e popular os dados de demonstração
+```bash
+npm run db:migrate   # cria/atualiza o schema SQLite (prisma migrate dev)
+npm run db:seed      # popula o banco com o seed de demonstração (INITIAL_DB_SEED)
+```
+> Alternativa sem histórico de migração: `npx prisma db push` seguido de `npm run db:seed`.
+
+Pronto! O ambiente está instalado e com dados de exemplo.
+
+---
+
+## ▶️ Execução Passo a Passo
+
+### Modo desenvolvimento
+```bash
+npm run dev
+```
+Acesse **http://localhost:3000**.
+
+> ⚠️ **Aviso de dev (Turbopack):** o Next.js 16 em modo dev pode, durante o HMR, emitir intermitentemente `Could not find the module ... in the React Client Manifest` (bug conhecido do Turbopack — vercel/next.js#85883). É um problema **apenas de desenvolvimento**, não do código. Soluções: limpar o cache (`.next`) e reiniciar, ou validar via build de produção (abaixo).
+
+### Modo produção (recomendado para validação e testes)
+```bash
+npm run build   # prisma generate + next build
+npm run start   # sobe o servidor de produção em http://localhost:3000
+```
+
+### Inspecionar o banco de dados (Prisma Studio)
+```bash
+npm run db:studio
+```
+
+### Resetar o banco para o seed padrão
+```bash
+npm run db:reset   # prisma migrate reset --force (recria e re-semeia)
+```
+> Também é possível resetar pela UI: **Configurações → Administração de Dados → Resetar Banco de Dados**.
+
+### Scripts disponíveis
+| Script | Ação |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento (Next dev / Turbopack) |
+| `npm run build` | `prisma generate` + build de produção |
+| `npm run start` | Servidor de produção |
+| `npm run lint` | Lint (`next lint`) |
+| `npm run typecheck` | Checagem de tipos (`tsc --noEmit`) |
+| `npm run db:generate` | Gera o Prisma Client |
+| `npm run db:migrate` | Aplica migrações de desenvolvimento |
+| `npm run db:seed` | Popula o banco com o seed de demonstração |
+| `npm run db:reset` | Recria o banco e re-semeia |
+| `npm run db:studio` | Abre o Prisma Studio |
+| `npm run test:e2e` | Executa a suíte Playwright |
+| `npm run test:e2e:ui` | Playwright em modo UI |
+| `npm run test:e2e:report` | Abre o último relatório HTML do Playwright |
+
+---
+
+## 🗂️ Organização do Projeto
+
+```
+TestManagementSystem/
+├── app/                          # Next.js App Router (UI + API)
+│   ├── api/                      # Route Handlers (backend REST)
+│   │   ├── database/route.ts             # GET snapshot / PUT substituir banco
+│   │   ├── database/reset/route.ts       # POST reset para o seed
+│   │   ├── executions/route.ts           # GET listar / POST persistir run
+│   │   ├── executions/[id]/route.ts      # GET detalhe / DELETE execução
+│   │   ├── test-specs/route.ts           # GET / POST specs
+│   │   ├── test-specs/[id]/route.ts      # PATCH / DELETE spec
+│   │   ├── test-cases-sphere/route.ts    # GET / POST casos de teste
+│   │   ├── test-cases-sphere/[id]/route.ts # PATCH / DELETE caso
+│   │   ├── folders/route.ts              # GET/POST/PATCH/DELETE pastas
+│   │   └── sql/route.ts                  # POST consulta SQL somente-leitura
+│   ├── layout.tsx                # Layout raiz (metadata, idioma, globals.css)
+│   ├── page.tsx                  # Página inicial
+│   ├── app-client.tsx            # Wrapper client-only (dynamic ssr:false)
+│   ├── global-error.tsx          # Error boundary raiz
+│   └── globals.css               # Estilos globais (Tailwind)
+│
+├── src/
+│   ├── App.tsx                   # Componente principal (orquestra os painéis)
+│   ├── components/               # ExecutionReports.tsx, TMSDevice.tsx
+│   ├── hooks/useDatabase.ts      # Estado do banco + persistência via API + BroadcastChannel
+│   ├── lib/
+│   │   ├── db.ts                 # Singleton PrismaClient (adapter libsql)
+│   │   └── api/client.ts         # Cliente HTTP tipado da API
+│   ├── server/                   # Camada de dados (backend)
+│   │   ├── repositories/         # Acesso a dados (Prisma) por entidade
+│   │   ├── services/             # Regras de negócio + transações
+│   │   ├── validation/schemas.ts # Schemas Zod de entrada da API
+│   │   ├── mappers/dbMappers.ts  # Prisma → tipos de domínio (Db*)
+│   │   ├── http/responses.ts     # Helpers de resposta/erro da API
+│   │   ├── db/seed.ts            # Lógica idempotente de seed
+│   │   └── utils/identifiers.ts  # Geração de IDs e timestamps
+│   ├── utils/
+│   │   ├── featureLoader.ts      # Parser Robot/Gherkin
+│   │   ├── excelExporter.ts      # Exportação .xlsx (ExcelJS)
+│   │   ├── sqliteEngine.ts       # Tipos + seed inicial (VirtualDatabase)
+│   │   └── i18n.ts               # Tradutor PT/EN centralizado
+│   ├── data/bdd_scenarios.ts     # Cenários BDD de exemplo
+│   └── types.ts                  # Tipos compartilhados
+│
+├── prisma/
+│   ├── schema.prisma             # Modelos relacionais (Execution, TestCase, Step, ...)
+│   ├── seed.ts                   # Entrada do seed do Prisma
+│   └── dev.db                    # Banco SQLite local (ignorado no git)
+├── prisma.config.ts              # Config Prisma 7 (schema, datasource, seed)
+│
+├── e2e/                          # Testes Playwright
+│   ├── pages/                    # Page Objects (BasePage + Feature*)
+│   ├── fixtures.ts               # Fixtures que injetam os Page Objects
+│   └── *.spec.ts                 # Specs por área (shell, terminal, sqlite, reports, tms)
+├── playwright.config.ts          # Config Playwright (webServer = build de produção)
+│
+├── next.config.ts                # Config Next.js (serverExternalPackages, turbopack.root)
+├── postcss.config.mjs            # Tailwind via PostCSS
+├── tsconfig.json                 # TypeScript (strict, alias @/*)
+└── docs/README.md                # Esta documentação
+```
+
+### Princípios de arquitetura
+- **Separação de responsabilidades (SOLID):** UI (React) → API (Route Handlers) → Services → Repositories → Prisma. Cada camada tem uma única responsabilidade.
+- **Validação na borda:** toda entrada da API é validada com **Zod** antes de chegar aos services.
+- **Tipagem forte:** TypeScript em modo `strict`; `any` é evitado em favor de interfaces robustas.
+- **Sincronização sem acoplamento:** o `useDatabase` persiste mudanças (debounced) via API e notifica outras abas pelo `BroadcastChannel`.
+
+---
+
+## ✅ Funcionalidades Implementadas
+
+### Núcleo de QA
+- **Parser Robot/Gherkin resiliente** com detecção flexível de cenários, `Skip`, `[Tags]`, `[Documentation]` e passos BDD.
+- **Upload e sincronização** de arquivos `.feature`, `.txt`, `.robot` com limpeza de estado e auto-seleção de tags.
+- **Dois modos de execução**: "Execução" (cenário focado) e "Executar Feature" (suíte completa), com comandos Robot canônicos no terminal virtual.
+- **Status do ciclo de vida** padronizados: *Not Started, In Progress, Passed, Failed, Blocked, Skipped*.
+
+### Dados e relatórios
+- **Banco SQLite real** (Prisma) com tabelas `executions`, `test_cases`, `steps`, `test_specs`, `test_folders`, `test_cases_sphere` e histórico.
+- **Navegador SQLite** com visualização em tabelas e **Console RAW SQL** (consultas somente-leitura via `/api/sql`).
+- **Aba de Relatórios** estilo Allure: cartões/tabela, filtros por status (PASS/FAIL), busca e drill-down por execução.
+- **Exportação Excel (.xlsx)** com múltiplas abas, KPIs, validação de dados (dropdowns) e links de evidência.
+
+### Plataforma
+- **API REST** completa para banco, execuções, specs, casos de teste, pastas e SQL.
+- **Sincronização multi-abas** em tempo real via `BroadcastChannel`.
+- **Suporte bilíngue PT-BR / EN-US** centralizado em `src/utils/i18n.ts`.
+- **TMS Standalone**: gestão de casos de teste (árvore de pastas/features, filtro, detalhe com Visão Geral/Auditoria/Scripts, criar/editar/excluir/executar).
+- **Menu de Configuração**: controle de velocidade de simulação e reset seguro do banco.
+- **Testes E2E (Playwright)** cobrindo todos os painéis (ver seção abaixo).
+
+---
+
+## 🧪 Testes Automatizados (Playwright)
+
+A suíte de testes E2E valida todos os componentes/painéis da aplicação seguindo o padrão **Page Object Model + ATDD** (títulos no estilo Given/When/Then, sem Cucumber).
+
+### Estrutura
+- **`e2e/pages/BasePage.ts`**: comportamentos globais (navegação, header, status do DB, idioma, configurações, navegador de painéis).
+- **`e2e/pages/Feature*.ts`**: um Page Object por área — `FeatureWorkspaceShell`, `FeatureTerminal`, `FeatureSqliteBrowser`, `FeatureReports`, `FeatureTms`.
+- **`e2e/fixtures.ts`**: injeta os Page Objects nos testes.
+- **`e2e/*.spec.ts`**: cenários por painel (shell/KPIs, terminal, SQLite, relatórios, TMS).
+
+### Seletores e estabilidade
+Prioridade de seletores: **`id` estável → seletores de acessibilidade (`getByRole`/`getByLabel`/`getByPlaceholder`) → `data-testid`**, evitando CSS/XPath frágil.
+
+### Configuração relevante
+- O `webServer` do `playwright.config.ts` sobe o **build de produção** (`npm run build && npm run start`), imune ao bug de HMR do Turbopack.
+- Execução **serial** (`workers: 1`), pois o backend é um único processo com um único arquivo SQLite compartilhado (sem isolamento por teste).
+
+### Como executar
+```bash
+# 1ª vez: instalar o navegador do Playwright
+npx playwright install chromium
+
+# Rodar a suíte (sobe o servidor de produção automaticamente)
+npm run test:e2e
+
+# Modo interativo / relatório
+npm run test:e2e:ui
+npm run test:e2e:report
+```
 
 ---
 
@@ -100,7 +350,7 @@ Sempre que um novo arquivo de testes (.feature, .txt, .robot) é carregado na wo
 
 ## 🗄️ Estrutura de Modelagem Relacional (SQLite)
 
-Todas as movimentações e execuções no terminal alimentam tabelas em nosso banco de dados relacional simulado no console através de consultas `SQL`. A modelagem é construída conforme abaixo:
+Todas as movimentações e execuções alimentam tabelas em um banco de dados relacional **SQLite real**, definido em `prisma/schema.prisma` e acessado pela camada `src/server` via Prisma. A modelagem lógica é descrita abaixo (os nomes físicos das colunas seguem o `schema.prisma`):
 
 ### 1. Tabela `executions`
 Representa cada execução enviada no terminal virtual virtualizado:
