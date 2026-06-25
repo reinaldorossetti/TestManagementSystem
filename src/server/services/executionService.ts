@@ -8,7 +8,7 @@ import {
 import type { PersistRunInput } from '@/src/server/validation/schemas';
 
 /**
- * Persists a completed simulation run (execution + test cases + steps) in a
+ * Persists a completed Robot run (execution + test cases + steps) in a
  * single transaction, replacing the legacy in-place `setSqliteDb` array prepend.
  */
 export async function persistRun(payload: PersistRunInput): Promise<void> {

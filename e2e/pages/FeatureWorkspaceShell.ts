@@ -16,8 +16,8 @@ export class FeatureWorkspaceShell extends BasePage {
     return this.page.getByText(label, { exact: true });
   }
 
-  get simulationSpeedLabel(): Locator {
-    return this.page.getByText('Velocidade de Simulação');
+  get syncStatusLabel(): Locator {
+    return this.page.getByText('Sincronização Ativa');
   }
 
   get resetDatabaseButton(): Locator {

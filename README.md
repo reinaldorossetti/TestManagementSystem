@@ -1,6 +1,6 @@
 # Centro de Execução QA TMS - Documentação Técnica do Projeto
 
-Bem-vindo ao **Centro de Execução QA TMS**! Este é um integrador e simulador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com recursos avançados de execução focada, parser resiliente e persistência de dados estruturados em um banco de dados relacional **SQLite real**.
+Bem-vindo ao **Centro de Execução QA TMS**! Este é um integrador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com execução real local, parser resiliente e persistência de dados estruturados em um banco de dados relacional **SQLite** gerenciado por Prisma.
 
 A aplicação é construída como um projeto **full-stack Next.js 16 (App Router)**: o frontend em **React 19** e o backend (Route Handlers + camada de serviços) convivem no mesmo projeto. A persistência usa **SQLite via Prisma 7** (com o driver adapter `@prisma/adapter-libsql`), e a sincronização em tempo real entre abas é feita pelo **`BroadcastChannel`** do HTML5.
 
@@ -20,7 +20,7 @@ O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamento
 │  Upload Gherkin/Robot ──> Parser (src/utils/featureLoader.ts)                  │
 │        │                                                                       │
 │        ├─> Workspace / Cartões ─> "Execução" (focada)                         │
-│        ├─> Terminal Virtual ────> "Executar Feature" (completa)               │
+│        ├─> Terminal ─────────────> "Executar Feature" / Terminal Ao Vivo (Robot real) │
 │        ├─> Navegador SQLite (tabelas + Console RAW SQL)                        │
 │        ├─> Relatórios (estilo Allure) + Exportação Excel (.xlsx)              │
 │        └─> TMS Standalone (gestão de casos de teste)                           │
@@ -38,7 +38,7 @@ O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamento
 
 1. **Parser Sintático (`src/utils/featureLoader.ts`)**: Mapeia arquivos do Robot Framework e Gherkin tradicional, extraindo metadados estruturados, tags e cenários.
 2. **Dashboard de Monitoria (Cliente React)**: Apresenta os cenários em cartões interativos organizados por status, tags e módulos, com os passos BDD executados.
-3. **Mecanismo de Execução Assistida**: Simula a execução em dois níveis (completo vs. focado), gerando logs idênticos aos terminais shell reais do Robot.
+3. **Execução real do Robot Framework**: Dois pontos de entrada no Terminal — **Execução** (cenário focado por tag) e **Executar Feature** (tag ativa no dropdown), com streaming de stdout e persistência em `results/` + SQLite.
 4. **API REST (`app/api/**`)**: Route Handlers que expõem o snapshot do banco, execuções, specs, casos de teste, pastas e consultas SQL somente-leitura.
 5. **Camada de Dados (`src/server/**`)**: Repositories + Services + validação Zod sobre o Prisma Client, garantindo separação de responsabilidades (SOLID).
 6. **Persistência SQLite real (`prisma/`)**: Banco relacional gerenciado por Prisma 7, consultável também pelo painel **Navegador SQLite**.
@@ -227,7 +227,7 @@ TestManagementSystem/
 ### Núcleo de QA
 - **Parser Robot/Gherkin resiliente** com detecção flexível de cenários, `Skip`, `[Tags]`, `[Documentation]` e passos BDD.
 - **Upload e sincronização** de arquivos `.feature`, `.txt`, `.robot` com limpeza de estado e auto-seleção de tags.
-- **Dois modos de execução**: "Execução" (cenário focado) e "Executar Feature" (suíte completa), com comandos Robot canônicos no terminal virtual.
+- **Dois modos de execução real**: "Execução" (cenário focado por tag) e "Executar Feature" (tag ativa), com comandos Robot canônicos e streaming no console.
 - **Status do ciclo de vida** padronizados: *Not Started, In Progress, Passed, Failed, Blocked, Skipped*.
 
 ### Dados e relatórios
@@ -241,7 +241,7 @@ TestManagementSystem/
 - **Sincronização multi-abas** em tempo real via `BroadcastChannel`.
 - **Suporte bilíngue PT-BR / EN-US** centralizado em `src/utils/i18n.ts`.
 - **TMS Standalone**: gestão de casos de teste (árvore de pastas/features, filtro, detalhe com Visão Geral/Auditoria/Scripts, criar/editar/excluir/executar).
-- **Menu de Configuração**: controle de velocidade de simulação e reset seguro do banco.
+- **Menu de Configuração**: sincronização multi-abas e reset seguro do banco.
 - **Testes E2E (Playwright)** cobrindo todos os painéis (ver seção abaixo).
 
 ---
@@ -294,7 +294,7 @@ Isso permite analisar corretamente:
 
 ### 2. Tratamento da Diretiva `Skip` (Robot Framework)
 Se a instrução `Skip` com uma mensagem explicativa (ex: `Skip    msg=Sem o serviço no momento...`) for localizada dentro de um cenário:
-- O cenário é simulado como ignorado (`SKIP`).
+- O cenário é registrado como ignorado (`SKIP`).
 - Todos os passos Gherkin pertencentes a este cenário recebem a marcação e visualização de status `SKIP`.
 - O banco de dados registra o status correspondente para auditoria futura das métricas de cobertura.
 
@@ -303,7 +303,7 @@ O parser suporta os dois formatos canônicos de tags:
 - **Gherkin Tags (`@`)**: Linhas imediatamente anteriores à declaração do cenário contendo as tags precedidas pelo símbolo `@` (ex: `@RCT01 @login`). Essas tags são acumuladas do arquivo e aplicadas ao cenário subsequente.
 - **Robot Framework `[Tags]`**: Linhas dentro do escopo do cenário começando com o token `[Tags]` (ex: `[Tags]    RCT01`). Elas são limpas e salvas como tags nativas do cenário.
 
-O sistema armazena **apenas as tags reais desses testes** no banco de dados e as apresenta nos badges de cada cartão na workspace. Se um cenário não possui tags específicas, ele é considerado parte de `@all_scenarios` (Suite Completa).
+O sistema armazena **apenas as tags reais desses testes** no banco de dados e as apresenta nos badges de cada cartão na workspace. Cenários sem tag exigem seleção manual em **Configurar tag** antes da execução.
 
 ### 4. Mapeamento de Passos (BDD e Keywords)
 Mapeia os passos definidos formalmente com prefixos padrão BDD (como `Dado`, `Quando`, `Então`, `E`, `Mas`, `Given`, `When`, `Then`, `And`, `But`) ou linhas indentadas de ações diretas do Robot (mapeadas dinamicamente com o tipo auxiliar `AND`).
@@ -312,29 +312,35 @@ Mapeia os passos definidos formalmente com prefixos padrão BDD (como `Dado`, `Q
 
 ## 🚀 Modos de Execução de Testes
 
-Para garantir maior agilidade no dia a dia do analista de qualidade, o simulador oferece dois fluxos de execução independentes:
+Todas as execuções são **reais** — o interpretador Robot Framework roda localmente via API (`/api/terminal/run`) e os artefatos são gravados em `results/<RUN-...>/`.
 
 ### 1. Botão "Execução" (Execução Focada de Cenário Único)
-* **Localização**: Fica localizado individualmente na parte inferior de cada cartão de cenário na Workspace.
+* **Localização**: Rodapé de cada cartão de cenário na Workspace.
 * **Comportamento**: 
-  - Ao ser clicado, ele limpa o contexto de execução anterior e simula apenas o teste correspondente àquele card.
-  - Ele extrai e lê a tag identificadora primária do cenário (se houver, limpando o caractere de arroba `@` caso presente, ex: `@RCT01` se torna `RCT01`).
-  - O terminal virtual é ativado imediatamente na aba **Console Terminal**.
-  - O comando executado e impresso no terminal corresponde à sintaxe focada do Robot:
+  - Extrai a tag primária do cenário (`[Tags]` ou `@`) e chama `handleRunFeatureReal(tag)`.
+  - Redireciona para a aba **Console Terminal** com streaming de stdout.
+  - Comando exemplo:
     ```bash
-    robot --include RCT01 ./
+    python -m robot -i LT06 robot-sample/login_tests.robot
     ```
-  - Se o cenário não possuir tags específicas, o sistema utiliza o parâmetro genérico `all_scenarios` para execução pontual.
+  - Se o cenário não possuir tag, o sistema solicita seleção em **Configurar tag**.
 
-### 2. Botão "Executar Feature" (Execução de Suíte Completa)
-* **Localização**: Fica em evidência no cabeçalho superior direito da aba de controle do **Console Terminal**.
+### 2. Botão "Executar Feature" (Execução por Tag Ativa)
+* **Localização**: Cabeçalho do **Console Terminal** e tela de **Reports**.
 * **Comportamento**:
-  - Executa na íntegra de forma sequencial **todos os cenários** atualmente de forma sequencial.
-  - **Usa o arquivo de argumentos e os parâmetros selecionados**: Ao ser acionado, este botão compila o comando padrão completo utilizando o compilador de comando (`getCompiledCommand`), incorporando o arquivo de argumentos de projeto (`-A project_args_file.txt`) e a tag de filtro ativa no dropdown. Ele garante que qualquer parâmetro customizado de console seja transferido adequadamente durante a execução geral.
-  - Imprime o comando canônico completo do interpretador:
+  - Executa testes reais filtrados pela tag selecionada no dropdown (`-i`).
+  - Usa `buildFeatureRobotCommand()` com o arquivo `.robot` de origem da tag.
+  - Imprime o comando canônico no console:
     ```bash
-    python -m robot -A project_args_file.txt --timestampoutputs -i <tag_selecionada> ./
+    python -m robot -i login_tests robot-sample/login_tests.robot
     ```
+
+### 3. Terminal Ao Vivo — Executar Todos os Testes
+* Executa a suíte completa em `robot-sample/`:
+  ```bash
+  python -m robot robot-sample/
+  ```
+* Mesmo pipeline de persistência (`/api/terminal/output`) que **Executar Feature**.
 
 ---
 
@@ -353,7 +359,7 @@ Sempre que um novo arquivo de testes (.feature, .txt, .robot) é carregado na wo
 Todas as movimentações e execuções alimentam tabelas em um banco de dados relacional **SQLite real**, definido em `prisma/schema.prisma` e acessado pela camada `src/server` via Prisma. A modelagem lógica é descrita abaixo (os nomes físicos das colunas seguem o `schema.prisma`):
 
 ### 1. Tabela `executions`
-Representa cada execução enviada no terminal virtual virtualizado:
+Representa cada execução real registrada no Terminal:
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
@@ -364,7 +370,7 @@ Representa cada execução enviada no terminal virtual virtualizado:
 | `passed` | INTEGER | Quantidade de testes aprovados |
 | `failed` | INTEGER | Quantidade de testes reprovados |
 | `skipped` | INTEGER | Quantidade de testes ignorados |
-| `report_xml`| TEXT | Caminho virtual de relatório XML gerado |
+| `report_xml`| TEXT | Caminho do relatório XML em `results/` |
 
 ### 2. Tabela `test_cases`
 Registra e detalha o status individual de cada cenário executado:

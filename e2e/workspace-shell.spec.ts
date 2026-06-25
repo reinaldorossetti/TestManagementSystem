@@ -39,7 +39,7 @@ test.describe('Workspace shell (header, KPIs, global controls)', () => {
     await expect(page.getByText('CONNECTED')).toBeVisible();
   });
 
-  test('Given the dashboard, when the user opens settings, then speed control and reset DB are available', async ({
+  test('Given the dashboard, when the user opens settings, then sync status and reset DB are available', async ({
     shell,
   }) => {
     // Given the dashboard is open
@@ -48,8 +48,8 @@ test.describe('Workspace shell (header, KPIs, global controls)', () => {
     // When the user opens the settings drawer
     await shell.openSettings();
 
-    // Then the simulation speed control and a safely-located reset action appear
-    await expect(shell.simulationSpeedLabel).toBeVisible();
+    // Then the sync status and a safely-located reset action appear
+    await expect(shell.syncStatusLabel).toBeVisible();
     await expect(shell.resetDatabaseButton).toBeVisible();
   });
 

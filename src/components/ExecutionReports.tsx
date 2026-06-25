@@ -831,16 +831,6 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                 </button>
               </div>
 
-              {(exec.results_path.includes('%ROBOT_HOME%') ||
-                /\/output_\d+\.xml/i.test(exec.results_path)) && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200">
-                  {t(
-                    'Esta execução é simulada (workspace) e não possui screenshots em results/. Para exportar o PDF com evidências visuais, execute os testes pelo Terminal Ao Vivo e exporte essa execução.',
-                    'This is a simulated (workspace) run with no screenshots in results/. To export a PDF with visual evidence, run tests via the Live Terminal and export that execution.',
-                  )}
-                </div>
-              )}
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Simulated output.xml block */}

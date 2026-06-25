@@ -618,14 +618,6 @@ export default function App({ initialTab }: AppProps = {}) {
   });
   const [isNavDrawerOpen, setIsNavDrawerOpen] = useState<boolean>(false);
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
-  const [simulationSpeed, setSimulationSpeed] = useState<number>(() => {
-    const saved = localStorage.getItem('cardmais_simulation_speed');
-    return saved ? parseFloat(saved) : 1.0;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('cardmais_simulation_speed', String(simulationSpeed));
-  }, [simulationSpeed]);
 
   const [sqliteSubTab, setSqliteSubTab] = useState<'browse' | 'playground'>('browse');
   const [browseTableName, setBrowseTableName] = useState<'executions' | 'test_cases' | 'steps'>('executions');
@@ -639,9 +631,8 @@ export default function App({ initialTab }: AppProps = {}) {
   });
   const [sqlLatency, setSqlLatency] = useState<number | null>(null);
 
-  // Running simulator states
+  // Running state for real Robot execution
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [currentRunningScenarioIndex, setCurrentRunningScenarioIndex] = useState<number>(-1);
   const [terminalLogs, setTerminalLogs] = useState<{ id: number; text: string; mode: 'info' | 'success' | 'warn' | 'error' | 'cmd' | 'header' }[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
 
@@ -918,7 +909,7 @@ export default function App({ initialTab }: AppProps = {}) {
     
     setTerminalLogs([]);
     appendTerminalLog(`[TESTLINK] Carregado especificação do repositório no Workspace principal!`, 'success');
-    appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste Gherkin mapeados e prontos para simulação.`, 'info');
+    appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste Gherkin mapeados e prontos para execução.`, 'info');
   };
 
   const handleOpenCreateSpec = () => {
@@ -1018,7 +1009,7 @@ export default function App({ initialTab }: AppProps = {}) {
       id: nextId,
       name: parsed.title || "Especificação Importada",
       category: "Importados QA",
-      tags: tagsArr.length > 0 ? tagsArr.join(', ') : '@all_scenarios',
+      tags: tagsArr.length > 0 ? tagsArr.join(', ') : '',
       content: gherkinContent,
       created_at: now
     };
@@ -1219,8 +1210,8 @@ export default function App({ initialTab }: AppProps = {}) {
     let autoGherkin = `Feature: ${cleanFolderName || 'Recarga de telefone'} - Cenário Automatizado\n`;
     autoGherkin += `  Como analista de QA da TMS\n`;
     autoGherkin += `  Quero carregar a especificação do caso de teste ${tCase.id}\n`;
-    autoGherkin += `  Para simular as rotinas e persistir os resultados no banco SQLite local.\n\n`;
-    autoGherkin += `  @all_scenarios @${tCase.id}\n`;
+    autoGherkin += `  Para executar as rotinas e persistir os resultados no banco SQLite local.\n\n`;
+    autoGherkin += `  @${tCase.id}\n`;
     autoGherkin += `  Scenario: ${tCase.title.replace(/^[^-]+-\s*/, '')}\n`;
 
     const stepLines = tCase.steps.split('\n');
@@ -1258,10 +1249,10 @@ export default function App({ initialTab }: AppProps = {}) {
     let autoGherkin = `Feature: ${cleanFolderName || 'Recarga de telefone'} - Cenário Automatizado Multi-teste\n`;
     autoGherkin += `  Como analista de QA da TMS\n`;
     autoGherkin += `  Quero carregar a especificação de múltiplos casos de teste\n`;
-    autoGherkin += `  Para simular as rotinas e persistir os resultados no banco SQLite local.\n\n`;
+    autoGherkin += `  Para executar as rotinas e persistir os resultados no banco SQLite local.\n\n`;
 
     cases.forEach((tCase) => {
-      autoGherkin += `  @all_scenarios @${tCase.id}\n`;
+      autoGherkin += `  @${tCase.id}\n`;
       autoGherkin += `  Scenario: ${tCase.title.replace(/^[^-]+-\s*/, '')}\n`;
 
       const stepLines = tCase.steps.split('\n');
@@ -1372,10 +1363,12 @@ export default function App({ initialTab }: AppProps = {}) {
     window.open(`${window.location.origin}/tms`, '_blank');
   };
 
-  /** Execução real Robot (mesmo fluxo do Terminal Ao Vivo), filtrada pela tag da feature. */
-  const handleRunFeatureReal = async () => {
+  /** Execução real Robot (Terminal Ao Vivo / Executar Feature / cenário único). */
+  const handleRunFeatureReal = async (tagOverride?: string) => {
     if (isExecuting) return;
-    if (!filterTag.trim()) {
+
+    const tag = (tagOverride?.replace(/^@/, '').trim() || filterTag.trim());
+    if (!tag) {
       appendTerminalLog(
         t(
           '[ERRO] Nenhuma tag Robot selecionada. Abra Configurar tag e selecione uma tag (Test Tags ou [Tags]).',
@@ -1388,7 +1381,6 @@ export default function App({ initialTab }: AppProps = {}) {
     setIsExecuting(true);
     setTerminalLogs([]);
 
-    const tag = filterTag;
     const active = executionTags.find((t) => t.value === tag);
     const cmd = buildFeatureRobotCommand(tag, active?.sourceFile);
     const timestamp = formatRobotRunTimestamp();
@@ -1441,287 +1433,12 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
-  // Automated Test Simulator Runner
-  const handleRunRobotFramework = async (customTagSpec?: string, scenarioIdToRunOnly?: string) => {
-    if (isExecuting) return;
-    setIsExecuting(true);
-    setTerminalLogs([]);
-    
-    const activeTag = customTagSpec || filterTag;
-    let commandToLog = "";
-    if (scenarioIdToRunOnly) {
-      const targetScenario = parsedFeature.scenarios.find(sc => sc.id === scenarioIdToRunOnly);
-      const tagLabel = (targetScenario?.tags && targetScenario.tags.length > 0) ? targetScenario.tags[0].replace(/^@/, '') : 'all';
-      commandToLog = `robot --include ${tagLabel} ./`;
-    } else {
-      commandToLog = (customTagSpec && customTagSpec !== 'all_scenarios')
-        ? `robot --include ${customTagSpec.replace(/^@/, '')} ./`
-        : getCompiledCommand();
-    }
-    
-    const timestampNow = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
-    const cleanTimestampFile = timestampNow.replace(/[- :]/g, '');
-    const executionId = `RUN-${Date.now().toString().slice(-10)}`;
-    const resultXmlPath = `%ROBOT_HOME%/results/output_${cleanTimestampFile}.xml`;
-
-    appendTerminalLog(`$ ${commandToLog}`, 'cmd');
-    await waitMs(350);
-
-    appendTerminalLog(`==============================================================================`, 'header');
-    appendTerminalLog(`Starting Robot Framework automated test execution on TMS BDD Feature Suite`, 'header');
-    appendTerminalLog(`==============================================================================`, 'header');
-    await waitMs(400);
-
-    appendTerminalLog(`[ INFO ] Parsing Cucumber feature source: '/features/tms.feature'...`, 'info');
-    appendTerminalLog(`[ INFO ] Feature Title detected: "${parsedFeature.title}"`, 'info');
-    appendTerminalLog(`[ INFO ] ArgFile loaded successfully: "${argsFile}"`, 'info');
-    appendTerminalLog(`[ INFO ] Target Tag Filter matches: "${activeTag}"`, 'info');
-    
-    let scenariosToRun = parsedFeature.scenarios;
-    if (scenarioIdToRunOnly) {
-      scenariosToRun = parsedFeature.scenarios.filter(sc => sc.id === scenarioIdToRunOnly);
-      if (scenariosToRun[0]) {
-        appendTerminalLog(`[ INFO ] Executando cenário único selecionado: "${scenariosToRun[0].title}"`, 'success');
-      }
-    }
-    
-    appendTerminalLog(`[ INFO ] Relational DB active: SQLite persistent stream mapped.`, 'success');
-    await waitMs(600);
-
-    appendTerminalLog(`------------------------------------------------------------------------------`, 'info');
-    if (scenarioIdToRunOnly && scenariosToRun[0]) {
-      appendTerminalLog(`Executing single test case: [ ${scenariosToRun[0].title} ]`, 'info');
-    } else {
-      appendTerminalLog(`Executing test cases matching tag spec: [ ${activeTag} ]`, 'info');
-    }
-    appendTerminalLog(`------------------------------------------------------------------------------`, 'info');
-    await waitMs(300);
-
-    let passedCount = 0;
-    let failedCount = 0;
-    let skippedCount = 0;
-    const testCasesToInsert: DbTestCase[] = [];
-    const stepsToInsert: DbStepLog[] = [];
-
-    // Filter scenarios matching simulating criteria or execute all (if not overridden by single scenario run)
-    if (!scenarioIdToRunOnly) {
-      if (activeTag && activeTag !== 'all_scenarios') {
-        const matchTagClean = activeTag.toLowerCase().replace(/^@/, '');
-        const filtered = parsedFeature.scenarios.filter(sc => {
-          return sc.tags.some(t => t.toLowerCase().replace(/^@/, '') === matchTagClean);
-        });
-        // Fallback: if no scenarios match exactly, fall back to default grouping index filter
-        if (filtered.length > 0) {
-          scenariosToRun = filtered;
-        } else if (activeTag !== 'recarga_transporte_tests') {
-          scenariosToRun = parsedFeature.scenarios.filter((_s, index) => index % 2 === 0);
-        }
-      }
-    }
-
-    const resultsByTag: Record<string, { status: string; duration: number }> = {};
-
-    for (let index = 0; index < scenariosToRun.length; index++) {
-      const scenario = scenariosToRun[index];
-      setCurrentRunningScenarioIndex(index);
-      
-      if (scenario.isSkipped) {
-        skippedCount++;
-        resultsByTag[scenario.id.toUpperCase()] = { status: 'Skipped', duration: 0 };
-        appendTerminalLog(`SKIPPED  |  Test Case ID: ${scenario.id}  -  ${scenario.title}`, 'warn');
-        appendTerminalLog(`  [Skip msg]: ${scenario.skipMessage || 'Ignorado via diretiva Skip'}`, 'warn');
-        await waitMs(200);
-        appendTerminalLog(`RESULT   |  ${scenario.id}  -  ${scenario.title}  |  SKIP  (0s)`, 'warn');
-        setScenarioStatuses(prev => ({ ...prev, [scenario.id]: 'SKIP' }));
-        if (scenario.tags && scenario.tags.length > 0) {
-          scenario.tags.forEach(t => {
-            const cleanTag = t.replace(/^@/, '').toUpperCase();
-            resultsByTag[cleanTag] = { status: 'Skipped', duration: 0 };
-            if (cleanTag.match(/^(RECEL\d+|RCT\d+|CT\d+)/i)) {
-              setSphereTestCaseStatuses(prev => {
-                const nextStatuses = { ...prev, [cleanTag]: 'SKIP' };
-                localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(nextStatuses));
-                return nextStatuses;
-              });
-            }
-          });
-        }
-        appendTerminalLog(`------------------------------------------------------------------------------`, 'info');
-        
-        const tcId = `TC-${executionId.slice(-3)}-${String(index + 1).padStart(3, '0')}`;
-        testCasesToInsert.push({
-          id: tcId,
-          execution_id: executionId,
-          name: scenario.title,
-          category: scenario.category,
-          status: 'SKIP',
-          duration_s: 0
-        });
-
-        scenario.steps.forEach((step, sIdx) => {
-          stepsToInsert.push({
-            id: `ST-${executionId.slice(-3)}-${String(index + 1).padStart(2, '0')}-${String(sIdx + 1).padStart(2, '0')}`,
-            test_case_id: tcId,
-            step_type: step.type,
-            text: step.text,
-            status: 'SKIP'
-          });
-        });
-        continue;
-      }
-
-      appendTerminalLog(`RUNNING  |  Test Case ID: ${scenario.id}  -  ${scenario.title}`, 'info');
-      await waitMs(450);
-
-      // Print individual step logs in terminal stream representing the cucumber model
-      for (const step of scenario.steps) {
-        appendTerminalLog(`  Step  |  [${step.type}] ${step.rawType} ${step.text} ... `, 'info');
-        await waitMs(250);
-      }
-
-      // Simulate step results
-      const scenarioType = scenario.type; // 'success' | 'failure' | 'permission'
-      let isPass = true;
-      // Ajuste o tempo de execução de forma randômica entre 5.0 s a 60.0 s, somente na simulação
-      let duration = parseFloat((Math.random() * (60 - 5) + 5).toFixed(1));
-
-      // Make 1 scenario fail on purpose if it's categorized as failure, or make it deterministic
-      if (scenarioType === 'failure' && index === 2) {
-        isPass = false;
-        duration = parseFloat((duration + 10).toFixed(1)); // Extra simulated duration on failure
-      }
-
-      const statusText = isPass ? 'PASS' : 'FAIL';
-      const displayStatus = isPass ? 'Passed' : 'Failed';
-      resultsByTag[scenario.id.toUpperCase()] = { status: displayStatus, duration: duration };
-      const logMode = isPass ? 'success' : 'error';
-      passedCount += isPass ? 1 : 0;
-      failedCount += isPass ? 0 : 1;
-
-      appendTerminalLog(`RESULT   |  ${scenario.id}  -  ${scenario.title}  |  ${statusText === 'PASS' ? 'Passed' : statusText}  (${duration}s)`, logMode);
-      setScenarioStatuses(prev => ({ ...prev, [scenario.id]: statusText }));
-      if (scenario.tags && scenario.tags.length > 0) {
-        scenario.tags.forEach(t => {
-          const cleanTag = t.replace(/^@/, '').toUpperCase();
-          resultsByTag[cleanTag] = { status: displayStatus, duration: duration };
-          if (cleanTag.match(/^(RECEL\d+|RCT\d+|CT\d+)/i)) {
-            setSphereTestCaseStatuses(prev => {
-              const nextStatuses = { ...prev, [cleanTag]: statusText };
-              localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(nextStatuses));
-              return nextStatuses;
-            });
-          }
-        });
-      }
-      appendTerminalLog(`------------------------------------------------------------------------------`, 'info');
-
-      // Draft into DB insertion variables
-      const tcId = `TC-${executionId.slice(-3)}-${String(index + 1).padStart(3, '0')}`;
-      testCasesToInsert.push({
-        id: tcId,
-        execution_id: executionId,
-        name: scenario.title,
-        category: scenario.category,
-        status: statusText,
-        duration_s: duration
-      });
-
-      // Draft steps logs insertion
-      scenario.steps.forEach((step, sIdx) => {
-        stepsToInsert.push({
-          id: `ST-${executionId.slice(-3)}-${String(index + 1).padStart(2, '0')}-${String(sIdx + 1).padStart(2, '0')}`,
-          test_case_id: tcId,
-          step_type: step.type,
-          text: step.text,
-          status: isPass ? 'PASS' : (sIdx === scenario.steps.length - 1 ? 'FAIL' : 'PASS')
-        });
-      });
-
-      await waitMs(200);
-    }
-
-    const totalDuration = parseFloat((testCasesToInsert.reduce((sum, item) => sum + item.duration_s, 0) + 0.3).toFixed(2));
-    const finalSuiteStatus = failedCount === 0 ? 'PASS' : 'FAIL';
-
-    appendTerminalLog(`==============================================================================`, 'header');
-    appendTerminalLog(`Robot Framework Suite Execution Summary:`, 'header');
-    appendTerminalLog(`==============================================================================`, 'header');
-    appendTerminalLog(`Status:       ${finalSuiteStatus === 'PASS' ? 'Passed' : finalSuiteStatus} ${finalSuiteStatus === 'PASS' ? '🟢' : '🔴'}`, finalSuiteStatus === 'PASS' ? 'success' : 'error');
-    appendTerminalLog(`Total Tests:  ${scenariosToRun.length}`, 'info');
-    appendTerminalLog(`Passed:       ${passedCount}  (Success rate: ${scenariosToRun.length > 0 ? Math.round((passedCount / scenariosToRun.length) * 100) : 0}%)`, 'success');
-    appendTerminalLog(`Failed:       ${failedCount}`, failedCount > 0 ? 'error' : 'info');
-    appendTerminalLog(`Skipped:      ${skippedCount}`, skippedCount > 0 ? 'warn' : 'info');
-    appendTerminalLog(`Duration:     ${totalDuration.toFixed(2)} seconds`, 'info');
-    appendTerminalLog(`XML Output:   ${resultXmlPath}`, 'info');
-    appendTerminalLog(`==============================================================================`, 'header');
-    
-    // SQLite relational database logging operation
-    appendTerminalLog(`[SQLITE] Writing relational outputs to SQLite local storage...`, 'info');
-    await waitMs(400);
-
-    const newExecution: DbExecution = {
-      id: executionId,
-      timestamp: timestampNow,
-      command: commandToLog,
-      duration_s: totalDuration,
-      total_tests: scenariosToRun.length,
-      passed: passedCount,
-      failed: failedCount,
-      status: finalSuiteStatus,
-      results_path: resultXmlPath
-    };
-
-    const updatedTestCasesSphere = (sqliteDb.test_cases_sphere || []).map(tc => {
-      const match = resultsByTag[tc.id.toUpperCase()];
-      if (match) {
-        const newHistoryItem = {
-          user: "Robot Engine",
-          action: `Executed automated test: ${match.status} (duration: ${match.duration.toFixed(1)}s)`,
-          time: getFormattedTimestamp()
-        };
-        return {
-          ...tc,
-          history: [newHistoryItem, ...(tc.history || [])]
-        };
-      }
-      return tc;
-    });
-
-    const updatedDb: VirtualDatabase = {
-      ...sqliteDb,
-      executions: [newExecution, ...sqliteDb.executions],
-      test_cases: [...testCasesToInsert, ...sqliteDb.test_cases],
-      steps: [...stepsToInsert, ...sqliteDb.steps],
-      test_cases_sphere: updatedTestCasesSphere
-    };
-
-    // Update state DB
-    setSqliteDb(updatedDb);
-
-    appendTerminalLog(`[SQLITE] Inserted 1 record raw inside 'executions' tab (id: ${executionId})`, 'success');
-    appendTerminalLog(`[SQLITE] Inserted ${testCasesToInsert.length} records raw inside 'test_cases' tab.`, 'success');
-    appendTerminalLog(`[SQLITE] Inserted ${stepsToInsert.length} BDD step logging lines corresponding to 'steps' tab.`, 'success');
-    appendTerminalLog(`[SQLITE] DB synchronization committed. Latency: 1.04ms`, 'success');
-
-    setIsExecuting(false);
-    setCurrentRunningScenarioIndex(-1);
-
-    // Refresh database console output automatically so it is always up to date
-    const resetRes = executeVirtualSQL(rawSqlInput, updatedDb);
-    setSqlResults(resetRes);
-  };
-
   useEffect(() => {
     if (pendingExecutionOnLoad && parsedFeature && !isExecuting) {
       setPendingExecutionOnLoad(false);
-      handleRunFeatureReal();
+      void handleRunFeatureReal();
     }
   }, [parsedFeature, pendingExecutionOnLoad, isExecuting]);
-
-  const waitMs = (ms: number) => {
-    const adjustedMs = ms / simulationSpeed;
-    return new Promise(resolve => setTimeout(resolve, adjustedMs));
-  };
 
   const renderTMSStandalone = () => {
     return (
@@ -2956,14 +2673,21 @@ export default function App({ initialTab }: AppProps = {}) {
                               {/* Tags Specific Execução Button */}
                               <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-1">
                                 <span className="text-[10px] text-slate-400 font-sans flex items-center gap-1 select-none">
-                                  Tag: <span className="bg-slate-900 border border-slate-800 text-[#FF6600] font-mono px-1.5 py-0.5 rounded font-extrabold text-[9px]">{sc.tags && sc.tags.length > 0 ? sc.tags[0] : '@all_scenarios'}</span>
+                                  Tag: <span className="bg-slate-900 border border-slate-800 text-[#FF6600] font-mono px-1.5 py-0.5 rounded font-extrabold text-[9px]">{sc.tags && sc.tags.length > 0 ? sc.tags[0] : (filterTag ? `@${filterTag}` : '—')}</span>
                                 </span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const tagToUse = sc.tags && sc.tags.length > 0 ? sc.tags[0] : 'all_scenarios';
-                                    handleRunRobotFramework(tagToUse, sc.id);
+                                    const tagToUse = sc.tags && sc.tags.length > 0
+                                      ? sc.tags[0].replace(/^@/, '')
+                                      : filterTag;
+                                    if (!tagToUse) {
+                                      appendTerminalLog('[ERRO] Selecione uma tag Robot em Configurar tag antes de executar.', 'error');
+                                      setActiveTab('terminal');
+                                      return;
+                                    }
+                                    void handleRunFeatureReal(tagToUse);
                                     setActiveTab('terminal');
                                   }}
                                   className="flex items-center gap-1.5 bg-[#FF6600] hover:bg-[#E05500] text-white px-2.5 py-1.5 rounded-md font-bold font-sans text-[10px] transition-all uppercase tracking-wider shadow-md shadow-[#FF6600]/10 select-none cursor-pointer"
@@ -3176,15 +2900,15 @@ export default function App({ initialTab }: AppProps = {}) {
                     <p className="text-slate-400 leading-relaxed">
                       {language === 'PT' ? (
                         <>
-                          Este painel lê as diretrizes descritas em português estruturado (BDD/Gherkin) direto do workspace à esquerda. 
-                          Ao clicar em simular, o interpretador compila o comando correspondente e simula os webhooks do <strong>Robot Framework</strong>, 
-                          registrando imediatamente o veredito por timestamp no banco <strong>SQLite local</strong> integrado.
+                          Este painel executa testes reais do <strong>Robot Framework</strong> na máquina local.
+                          Ao clicar em <strong>Executar Feature</strong> ou <strong>Execução</strong> no workspace, o comando é enviado ao interpretador,
+                          a saída é gravada em <strong>results/</strong> e os resultados são persistidos no banco <strong>SQLite</strong>.
                         </>
                       ) : (
                         <>
-                          This panel reads the guidelines described in structured Portuguese (BDD/Gherkin) directly from the workspace on the left. 
-                          Upon clicking simulate, the interpreter compiles the corresponding command and simulates the <strong>Robot Framework</strong> webhooks, 
-                          immediately registering the verdict by timestamp in the integrated <strong>local SQLite</strong> database.
+                          This panel runs real <strong>Robot Framework</strong> tests on the local machine.
+                          When you click <strong>Execute Feature</strong> or <strong>Execution</strong> on a workspace card, the command is sent to the interpreter,
+                          output is saved under <strong>results/</strong>, and results are persisted to the <strong>SQLite</strong> database.
                         </>
                       )}
                     </p>
@@ -3554,8 +3278,7 @@ export default function App({ initialTab }: AppProps = {}) {
 
                 <div className="p-5 border-t border-slate-800/60 bg-slate-950/20 flex flex-col gap-4 text-left">
                   <p className="text-xs text-slate-400">
-                    Sempre que a execução simulada do Robot Framework termina, o motor salva os relatórios físicos estruturados de QA. 
-                    Abaixo você pode pré-visualizar as estruturas dos relatórios no sandbox:
+                    Sempre que a execução real do Robot Framework termina, o motor salva os relatórios físicos estruturados de QA em <strong>results/</strong>.
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3748,7 +3471,7 @@ export default function App({ initialTab }: AppProps = {}) {
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-505 font-mono text-center py-8">
                           <Sparkles className="w-10 h-10 text-slate-700 mb-2" />
                           <p className="text-xs">Sem execuções no SQLite.</p>
-                          <p className="text-[10px] text-slate-600 mt-0.5">Dispare uma simulação no console!</p>
+                          <p className="text-[10px] text-slate-600 mt-0.5">Execute testes pelo Terminal para popular o histórico.</p>
                         </div>
                       )}
 
@@ -3844,7 +3567,7 @@ export default function App({ initialTab }: AppProps = {}) {
                     </div>
 
                     <p className="text-xs text-slate-400">
-                      Sempre que a execução simulada do Robot Framework termina, o motor salva os relatórios físicos estruturados de QA. 
+                      Sempre que a execução real do Robot Framework termina, o motor salva os relatórios físicos estruturados de QA em <strong>results/</strong>. 
                       Abaixo você pode pré-visualizar as estruturas dos relatórios no sandbox:
                     </p>
 
@@ -5179,7 +4902,7 @@ export default function App({ initialTab }: AppProps = {}) {
                     </div>
                     <div>
                       <h3 className="font-extrabold text-sm uppercase text-slate-200 tracking-tight leading-none text-left">Menu de Configuração</h3>
-                      <p className="text-[10px] text-slate-400 font-mono mt-1 text-left">Calibração e Administração do Simulador</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-1 text-left">Calibração e Administração</p>
                     </div>
                   </div>
                   <button 
@@ -5192,37 +4915,6 @@ export default function App({ initialTab }: AppProps = {}) {
 
                 {/* Configurations Body */}
                 <div className="flex flex-col gap-6 text-left">
-                  
-                  {/* SPEED ADJUSTMENT */}
-                  <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wide font-mono">Velocidade de Simulação</span>
-                      <span className="text-xs font-black text-[#FF6600] font-mono bg-[#FF6600]/15 px-2 py-0.5 rounded border border-[#FF6600]/25">
-                        {simulationSpeed.toFixed(1)}x
-                      </span>
-                    </div>
-                    <input 
-                      type="range"
-                      min="0.1"
-                      max="3.0"
-                      step="0.1"
-                      value={simulationSpeed}
-                      onChange={(e) => setSimulationSpeed(parseFloat(e.target.value))}
-                      className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FF6600]"
-                    />
-                    <div className="flex justify-between text-[9px] font-mono text-slate-500">
-                      <span>0.1x (Super Lento)</span>
-                      <span>1.0x (Padrão)</span>
-                      <span>3.0x (Instantâneo)</span>
-                    </div>
-                    <p className="text-[10px] leading-relaxed text-slate-400 font-semibold font-mono">
-                      {simulationSpeed < 0.5 && "🐌 Modo Câmera Lenta (Depuração minuciosa para análise de logs)"}
-                      {simulationSpeed >= 0.5 && simulationSpeed < 1.0 && "🐢 Depuração (Passos lentos para melhor visualização dos logs)"}
-                      {simulationSpeed === 1.0 && "⚡ Velocidade Padrão Robot Framework"}
-                      {simulationSpeed > 1.0 && simulationSpeed < 2.5 && "🚀 Execução Acelerada"}
-                      {simulationSpeed >= 2.5 && "🌀 Modo Turbo (Execução rápida dos testes/keywords)"}
-                    </p>
-                  </div>
 
                   {/* REAL-TIME SYNC STATUS */}
                   <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col gap-2.5">

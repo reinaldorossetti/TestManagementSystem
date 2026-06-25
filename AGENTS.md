@@ -1,6 +1,6 @@
 # Centro de Execução QA TMS - Documentação do Projeto
 
-Este projeto consiste em um integrador e simulador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com persistência de logs e estados em um banco de dados relacional **SQLite local** virtualizado.
+Este projeto consiste em um integrador interativo de testes baseados no **Robot Framework** utilizando a sintaxe **BDD Gherkin**, com persistência de logs e estados em um banco de dados relacional **SQLite** gerenciado por Prisma.
 
 Abaixo seguem detalhadas todas as regras implementadas, decisões de arquitetura e modificações realizadas.
 
@@ -16,11 +16,17 @@ O carregador dinâmico de características (`src/utils/featureLoader.ts`) foi pe
 
 2. **Diretiva de Pulo (`Skip` / `[Setup]` / `[Teardown]`)**:
    - Mapeamento nativo da diretiva `Skip` do Robot Framework (ex: `Skip    msg=Mensagem explicativa...`).
-   - Quando um teste possui a declaração `Skip`, o simulador executa o teste com o status `SKIP`, registrando a respectiva mensagem explicativa de pulo e marcando todos os passos internos deste cenário como ignorados (`SKIP`) no banco SQLite.
+   - Quando um teste possui a declaração `Skip`, o sistema registra o teste com o status `SKIP`, gravando a mensagem explicativa de pulo e marcando todos os passos internos deste cenário como ignorados (`SKIP`) no banco SQLite.
 
 3. **Mapeamento de Metadados e Tags**:
-   - Extração automática de metadados declarados nas diretivas `[Tags]` e `[Documentation]`.
-   - Limpeza e extração em tempo real de tags do Robot para uso no dropdown de filtros rápidos no terminal.
+   - Extração automática de metadados declarados nas diretivas `[Tags]` e `[Documentation]` no parser Gherkin/Robot (`featureLoader.ts`).
+   - **Tags de execução no Terminal** (dropdown `-i` / modal **Configurar tag**) vêm **exclusivamente** dos arquivos `.robot` em `robot-sample/`, via `src/utils/robotTagLoader.ts` e API `GET /api/terminal/robot-tags`:
+     - `Test Tags` na seção `*** Settings ***` (ex.: `login_tests` em `login_tests.robot`).
+     - `[Tags]` em cada caso de teste (ex.: `LT01` … `LT06`).
+   - A tag fictícia `@all_scenarios (Suite Completa)` foi **removida**; não existe no Robot Framework real.
+   - Ao abrir **Configurar tag**, a lista é **recarregada e limpa** a partir de `robot-sample/` (tags manuais antigas são substituídas).
+   - Upload de `.robot` atualiza as tags a partir do `Test Tags` / `[Tags]` do arquivo; salvar `.feature` ou carregar spec **não** altera mais a lista de tags de execução.
+   - Exclusão de tags no modal usa atualização funcional de estado (`setExecutionTags(prev => ...)`); qualquer tag pode ser removida.
 
 4. **Identificação Dinâmica de Passos (BDD e Keywords Robot)**:
    - Identificação precisa de passos iniciados com keywords BDD tradicionais (`Dado`, `E`, `Quando`, `Então`, `Mas`, `Given`, `When`, `Then`, `And`, `But`).
@@ -34,11 +40,11 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
 
 1. **Limpeza Completa do Estado Anterior**:
    - Sempre que o usuário realiza o upload ou arrasta um novo arquivo para a workspace, os cenários vigentes são totalmente limpos e limítrofes ao novo arquivo.
-   - A lista de tags de execução é limpa e reconstruída do zero a partir do novo arquivo, evitando contaminação por tags de arquivos prévios.
+   - A lista de tags de execução **não** é mais reconstruída a partir de tags `@` do Gherkin ao importar `.feature`; somente arquivos `.robot` importados atualizam o seletor de tags.
 
 2. **Auto-seleção de Tags**:
-   - Se novas tags válidas forem encontradas, o sistema auto-seleciona a primeira tag encontrada e reconfigura o seletor correspondente, emitindo um log de sucesso no console virtual.
-   - Caso nenhuma tag seja encontrada, o sistema define como padrão a classe unilar `@all_scenarios (Suite Completa)`.
+   - Ao carregar a página ou abrir **Configurar tag**, o sistema sincroniza tags de `robot-sample/` e auto-seleciona a primeira tag Robot encontrada (ex.: `login_tests`).
+   - Se nenhuma tag existir em `robot-sample/`, o seletor fica vazio até o operador adicionar uma tag manualmente no modal.
 
 3. **Status de Execução Inicial**:
    - Ao importar ou salvar uma nova especificação `.feature` (ou arquivo `.robot`, `.txt`), o status de execução de cada cenário é inicializado estritamente como **`Not executed`**, tendo em vista que os mesmos ainda não foram processados.
@@ -46,21 +52,80 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
 
 ---
 
-## 🚀 Modos de Execução de Testes (Novo)
+## 🚀 Modos de Execução de Testes
 
-O simulador suporta dois fluxos distintos de execução de maneira transparente e intuitiva para o operador de QA:
+O painel **Terminal** (`/terminal`) executa testes **reais** do Robot Framework na máquina local via APIs (`/api/terminal/run`, `/api/terminal/output`). Não há mais execução simulada.
 
-1. **Botão "Execução" (Execução de Cenário Único)**:
-   - Localizado individualmente no rodapé de cada cartão de teste na árvore da workspace.
-   - Quando acionado, ele extrai a tag identificadora primária do cenário (ou `@all_scenarios` se vazio) e chama o executor de forma focada.
-   - Redireciona o usuário para a aba de **Console Terminal** de forma instantânea.
-   - **Simulação Focada**: Executa **apenas** aquele cenário selecionado específico (ignora quaisquer outros listados no arquivo).
-   - Registra o comando de execução correspondente em formato Robot no terminal: E.g., `robot --include RCT01 ./`.
+### Pontos de entrada (todos reais)
 
-2. **Botão "Executar Feature" (Execução Completa)**:
-   - Localizado de forma evidente no cabeçalho de controle do terminal virtual.
-   - Quando acionado, limpa filtros momentâneos e realiza a simulação de execução de **todos os cenários** contidos no arquivo atual de forma sequencial.
-   - Exibe o comando canônico Robot padrão: `python -m robot -A args.txt ... ./`.
+| Ação | Implementação | Persistência |
+|------|---------------|--------------|
+| **Executar Feature** (cabeçalho) | `handleRunFeatureReal()` → `robotRunner.ts` | `results/<RUN-...>/` + SQLite |
+| **Execução** (cartão único na workspace) | `handleRunFeatureReal(tagDoCenário)` — filtra por tag `[Tags]` | Idem |
+| **Terminal Ao Vivo** — *Executar Todos os Testes* | `LiveTerminal.tsx` → `/api/terminal/run` | Idem |
+| **Executar Feature** em Reports | `handleRunFeatureReal()` | Idem |
+
+### Comandos Robot por contexto
+
+- **Terminal Ao Vivo — suíte completa**: `python -m robot robot-sample/` (`ROBOT_RUN_ALL_COMMAND`).
+- **Executar Feature** / **Execução** — filtrado pela tag (`buildFeatureRobotCommand()` em `robotCommands.ts`):
+  - `login_tests` → `python -m robot -i login_tests robot-sample/login_tests.robot`
+  - `LT06` (ou outra `[Tags]`) → `python -m robot -i LT06 robot-sample/login_tests.robot`
+  - Tag genérica → `python -m robot -i <tag> robot-sample/<arquivo.robot>`
+- O **Comando Final Compilado** no painel lateral usa o mesmo `buildFeatureRobotCommand()` com o `sourceFile` da tag selecionada.
+
+### Fluxo de execução real (`handleRunFeatureReal`)
+
+1. Monta pasta `RUN-YYYY-MM-DD_HH-MM-SS-xxxxx` (`buildRunFolderName`).
+2. `POST /api/terminal/run` com streaming de stdout no console.
+3. `POST /api/terminal/output` — parse de `output.xml`, captura de `report.html` / `log.html` por cenário, persistência em `executions` / `test_cases` / `steps`.
+4. Campos enriquecidos: `results_folder`, `report_screenshot_path`, `screenshot_path` (passos), `robot_test_id`.
+5. Parâmetro opcional `tagOverride` permite execução focada em um cenário (botão **Execução** no cartão da workspace).
+
+### Botões no cabeçalho do Terminal
+
+1. **Reporte / Report** (PT / EN):
+   - Ao lado de **Executar Feature**.
+   - Navega para **`/reports`** via `window.location.assign('/reports')`.
+
+2. **Executar Feature / Execute Feature**:
+   - Execução real da feature conforme tag ativa no dropdown.
+   - **Não** faz auto-scroll da página ao concluir.
+
+### Terminal Ao Vivo (`LiveTerminal.tsx`)
+
+Painel xterm.js — execução real local:
+
+1. **Executar Todos os Testes**: `python -m robot robot-sample/`.
+2. Streaming via `POST /api/terminal/run`; persistência opcional (`persist: true`) com callback `onPersisted`.
+3. Após o run: `POST /api/terminal/output` — mesmo pipeline de parse e evidências que **Executar Feature**.
+4. Diferença: Terminal Ao Vivo usa comando de **suíte completa**; o cabeçalho filtra pela **tag selecionada** (`-i`).
+
+### Painel lateral — Argumentos do Robot Framework
+
+1. **Tag de Execução (-i)**: dropdown alimentado por `executionTags` (Robot `Test Tags` + `[Tags]`).
+2. **Configurar tag**: modal de gestão; ao abrir, recarrega tags de `robot-sample/` via API.
+3. **Comando Final Compilado**: preview de `buildFeatureRobotCommand(filterTag, sourceFile)`.
+
+### Arquivos-chave do Terminal
+
+| Arquivo | Responsabilidade |
+|---------|------------------|
+| `src/App.tsx` | `handleRunFeatureReal`, botões Reporte/Executar Feature, modal de tags |
+| `src/components/LiveTerminal.tsx` | xterm, run all, persistência |
+| `src/utils/robotRunner.ts` | Streaming + `persistRobotRunOutput` |
+| `src/utils/robotCommands.ts` | `buildFeatureRobotCommand`, constantes de comando |
+| `src/utils/robotTagLoader.ts` | `extractRobotExecutionTags`, `buildExecutionTagsFromRobotTestTags` |
+| `app/api/terminal/run/route.ts` | Execução local do Robot |
+| `app/api/terminal/output/route.ts` | Parse `output.xml` + captura de relatórios |
+| `app/api/terminal/robot-tags/route.ts` | Lista tags de `robot-sample/*.robot` |
+
+### Botão "Execução" (cenário único na workspace)
+
+- Localizado no rodapé de cada cartão Gherkin.
+- Extrai a tag primária do cenário (`[Tags]` ou `@`) e chama `handleRunFeatureReal(tag)`.
+- Se não houver tag, exibe erro e pede seleção em **Configurar tag**.
+- Redireciona para a aba **Console Terminal** com streaming real.
 
 ### 🧩 Regra de Singular vs. Plural na Tela TMS (Gestão de Testes)
 
@@ -100,29 +165,26 @@ Regra obrigatória de UI para **todos os botões** da plataforma, para manter co
 
 ---
 
-## ⚙️ Menu de Configuração & Controle de Simulação (Novo)
+## ⚙️ Menu de Configuração
 
-Para centralizar ações administrativas e calibração de performance de QA, implementamos um sofisticado **Menu de Configuração** suspenso a partir do botão com ícone de engrenagem no cabeçalho principal:
+Para centralizar ações administrativas, o **Menu de Configuração** suspenso (ícone de engrenagem) oferece:
 
-1. **Controle de Velocidade de Simulação**:
-   - Ajustável via controle deslizante (*slider*) que calibra a velocidade dos tempos de espera do simulador (`waitMs`) em tempo real.
-   - Oferece modos que vão desde **0.5x (Modo Depuração)** para facilitar a análise visual microscópica de logs complexos até **3.0x (Modo Turbo)** para processamento instantâneo.
-
+1. **Sincronização em tempo real**: status de sincronização multi-abas via `BroadcastChannel`.
 2. **Administração Centralizada do SQLite (Reset DB)**:
-   - O botão de **Reset DB** foi removido de forma definitiva do topo do menu principal para evitar acionamentos acidentais durante a rotina do QA.
-   - Agora reside exclusivamente no card de Administração de Dados dentro do Painel de Configurações, onde limpa o histórico completo de execuções virtuais e restabelece a calibragem de seed de demonstração padrão do banco relacional de forma segura e contextualizada.
+   - O botão de **Reset DB** reside exclusivamente no card de Administração de Dados dentro do Painel de Configurações, onde limpa o histórico completo de execuções e restabelece o seed de demonstração padrão do banco relacional de forma segura e contextualizada.
 
 ---
 
 ## 🗄️ Estrutura de Logs e Relacional SQLite
 
-Cada simulação aciona eventos analíticos estruturados que alimentam um banco SQLite persistido no navegador:
+Cada execução real alimenta o banco SQLite persistido:
 
-* **Tabela `executions`**: Salva a data, comando exato utilizado, duração total cumulativa da execução, contagem de testes aprovados, reprovados e ignorados, e o caminho simulado do arquivo de relatório XML gerado em `%ROBOT_HOME%/results/`.
-* **Tabela `test_cases`**: Relação de cada cenário executado, contendo seu status (`PASS`, `FAIL`, `SKIP`), duração interna individual e categoria.
-* **Tabela `steps`**: Registro persistente microscópico de cada passo Gherkin individual e seu status correspondente na thread de execução.
+* **Tabela `executions`**: Data, comando, duração, totais pass/fail, status e caminho do `output.xml`.
+  - Inclui `results_folder` (ex.: `RUN-2026-06-25_22-44-49-89594`), `report_screenshot_path` e caminho físico em `results/`.
+* **Tabela `test_cases`**: Cenários com status, duração, categoria; execuções reais podem ter `robot_test_id` e `report_screenshot_path`.
+* **Tabela `steps`**: Passos Gherkin/Robot; execuções reais podem ter `screenshot_path` (Browser Library / Playwright).
 
-Todas essas tabelas podem ser analisadas e manipuladas em tempo real na aba **Navegador SQLite** (Histórico de Execução Remoto) através de consultas SQL manuais (DQL/DML) ou consultas padronizadas de monitoramento.
+Limpeza do histórico: `POST /api/database/clear-executions` ou botão **Limpar Histórico** em Reports — zera `executions`, `test_cases` e `steps`, preservando TMS e specs.
 
 ### 🌐 Sincronização em Tempo Real (Multi-Abas)
 Quando o **Histórico de Execução Remoto** ou os **Relatórios** são abertos em abas ou janelas secundárias separadas do navegador, o sistema utiliza o canônico barramento de eventos `StorageEvent` do HTML5. Assim, ao ser disparada qualquer execução de teste ou de feature na aba principal do Terminal, todas as demais abas abertas sincronizam-se instantaneamente em tempo real. Isso atualiza de imediato as contagens das tabelas em cache, as métricas e o playground analítico de consultas SQL de modo totalmente automatizado e consistente.
@@ -175,8 +237,8 @@ Para aprimorar a maturidade do sistema de monitoramento de testes baseados em Ro
 
 1. **Rótulos dos Status do Ciclo de Vida**:
    - **Not Started / Não Iniciado** (anteriormente *Not executed*): Casos de teste escritos, carregados, mas que ainda não foram executados na suíte de testes.
-   - **In Progress / Em Progresso**: Indica que o cenário ou teste está em execução ativa no momento pelo simulador robot virtualizado.
-   - **Passed / Aprovado** (anteriormente *PASS*): Indica o sucesso completo da suíte de teste, em que todos os passos atenderam às expectativas simuladas.
+   - **In Progress / Em Progresso**: Indica que o cenário ou teste está em execução ativa no Robot Framework.
+   - **Passed / Aprovado** (anteriormente *PASS*): Indica o sucesso completo da suíte de teste, em que todos os passos atenderam às expectativas.
    - **Failed / Falhou** (anteriormente *FAIL*): O teste foi processado, porém um ou mais passos falharam em atender às validações automatizadas.
    - **Blocked / Bloqueado**: Indica bloqueio de prosseguimento de testes por fator externo impeditivo (como dependências quebradas ou inconsistência no SQLite local).
    - **Skipped / Ignorado** (anteriormente *SKIP*): Declaração explícita de pulo de cenário ou flag configurada ativamente pelo operador QA.
@@ -190,31 +252,69 @@ Para aprimorar a maturidade do sistema de monitoramento de testes baseados em Ro
 
 ---
 
-## 📑 Tela de Relatórios (Reports) e Exportação em PDF (Novo)
+## 📑 Tela de Relatórios (Reports) e Exportação em PDF
 
-A área de **Relatórios de Execução** (`src/components/ExecutionReports.tsx`) ganhou uma página própria via roteamento real do App Router e um exportador de PDF dedicado (`src/utils/pdfExporter.ts`, função `handleExportExecutionReportToPDF`) que espelha fielmente o layout exibido em tela.
+A área de **Relatórios de Execução** (`src/components/ExecutionReports.tsx`, rota **`/reports`**) exibe o histórico de execuções reais, com detalhe estilo Allure e exportação PDF com evidências visuais.
 
-1. **Rota Própria por Feature (App Router)**:
-   - A antiga navegação por query param (`/?tab=reports`) foi promovida a uma rota dedicada **`/reports`** (assim como `/terminal`, `/sqlite` e `/tms`), reutilizando o shell do App.
-   - Um `middleware.ts` mantém compatibilidade, redirecionando `/` e `/?tab=x` para a rota correspondente `/x`.
+### Tela Reports (`/reports`)
 
-2. **Identidade Visual e Conteúdo do Cabeçalho**:
-   - O texto **"ALLURE 3 DEMO PORTAL" foi removido** definitivamente da tela de relatórios.
-   - O foco de execução passou a ser exibido como **`Feature: <nome_da_feature>`** (sem o prefixo `@`), sempre derivado do nome da feature — substituindo o antigo formato `Foco na Tag: @login_tests`.
+1. **Rota e navegação**:
+   - Rota dedicada **`/reports`** (App Router); `middleware.ts` redireciona `/` e `/?tab=reports` para `/reports`.
+   - Botão **Reporte / Report** no cabeçalho do Terminal leva a esta rota.
 
-3. **Botão "Exportar PDF" (Relatório de Execução)**:
-   - Adicionado no cabeçalho do detalhe do relatório, acionando `handleExportExecutionReportToPDF`.
-   - O PDF reproduz **exatamente** o layout escuro da tela: hero com badge de status, `Feature: ...`, data, comando Robot, **gauge donut multi-segmento** (verde Aprovado → vermelho Falho → âmbar Ignorado, espelhando o `conic-gradient`), cartões KPI (Total, Failed, Broken, Passed, Skipped) e a árvore de cenários.
-   - **Glifos vetoriais**: como as fontes padrão do `jsPDF` não possuem `✔`/`✖`, os ícones circulares de status (passos e casos) e as marcas dos chips são **desenhados vetorialmente** para preservar a fidelidade visual.
+2. **Listagem de execuções**:
+   - Ordenação **mais recente primeiro** (`timestamp` decrescente, desempate por `id`).
+   - Filtros por status (ALL / PASS / FAIL) e busca por ID, comando ou `results_path`.
+   - Cards com `Feature: <tag>` derivada do comando Robot (ex.: `Feature: login_tests`).
 
-4. **Árvore de Cenários no PDF (paridade com a tela)**:
-   - Cabeçalho `Gherkin Workspace Syntax: <arquivo>.feature`, linha `Environment: "ubuntu-latest"` com **barra de proporção segmentada**, faixa de categoria `[Categoria]` com `N cenários` e **chips coloridos** de contagem (aprovados/falhos/ignorados).
-   - Cada caso: ícone circular de status à esquerda, badge de ID, `(BDD scenario)`, nome em negrito, duração e indicador de passos.
-   - Passos: ícone de status + **badge de keyword** tingido (`GIVEN` azul, `WHEN` âmbar, `THEN` verde, `AND` cinza) + texto entre aspas + valor à direita (`65ms` / `FAIL` / `SKIP`). Quando não há passos, exibe a mensagem idêntica à da tela.
+3. **Detalhe do relatório**:
+   - Hero: badge de status, título `Feature: ...`, data formatada, comando Robot compilado.
+   - Gauge donut, KPIs (Total, Failed, Broken, Passed, Skipped), árvore de cenários por categoria.
+   - Aba **CI Metadata / XML**: metadados técnicos e caminho `results_path` da execução.
+   - Botão **PDF** no cabeçalho do detalhe exporta o relatório da execução aberta.
+   - Botão **Executar Feature** na tela de reports chama `handleRunFeatureReal()`.
 
-5. **Regra de Layout — Detalhamento Limpo dos Testes**:
-   - O rótulo **"Test Step Execution Tracer (Virtual SQLite Logs)"** foi **removido** tanto da tela quanto do PDF; o detalhamento dos passos não deve exibir esse cabeçalho.
-   - Deve haver **espaçamento vertical confortável** entre o nome do caso de teste e o bloco de detalhamento (passos), evitando que fiquem colados.
-   - **Regra permanente**: a exportação em PDF do relatório de execução deve sempre seguir **exatamente** o mesmo layout da página de Reports. Qualquer alteração visual feita na tela deve ser refletida no PDF (e vice-versa) para manter a paridade.
+4. **Identidade visual**:
+   - Removido definitivamente **"ALLURE 3 DEMO PORTAL"**.
+   - Foco: **`Feature: <nome_da_feature>`** (sem prefixo `@`).
 
+### Exportação PDF (`handleExportExecutionReportToPDF`)
+
+Implementação: `src/utils/pdfExporter.ts`. Referência de qualidade: `results/Relatorio_Execucao_com_evidencias.pdf` (~1,3 MB com imagens).
+
+1. **Nome do arquivo (timestamp)**:
+   - Padrão: `Relatorio_Execucao_com_evidencias_YYYY-MM-DD_HH-MM-SS.pdf`
+   - Função: `buildExecutionReportPdfFileName(exec)` — usa `exec.timestamp` da execução.
+   - Exemplo: `Relatorio_Execucao_com_evidencias_2026-06-25_19-44-49.pdf`
+
+2. **Pré-requisitos (execução real)**:
+   - Resolve pasta física via `GET /api/terminal/resolve-folder` + `resolveResultsFolderFromExecution`.
+   - Exige evidências em `results/<RUN-...>/`: screenshots em `browser/screenshot/` e/ou `artifacts/` (manifesto via `GET /api/terminal/evidence`).
+   - **Bloqueia exportação** se não houver pasta ou imagens em `results/`.
+   - Valida que pelo menos uma imagem foi incorporada no PDF antes de concluir o download.
+
+3. **Layout do PDF (paridade com a tela)**:
+   - Tema escuro: hero, donut multi-segmento, KPIs, árvore Gherkin (`cardmais.feature`), ícones de status **vetoriais** (jsPDF não renderiza ✔/✖).
+   - Passos no PDF: **somente BDD/Gherkin** — keywords internas do Robot (`New Browser`, `Fill Text`, `Take Screenshot`, etc.) são filtradas (`isBddGherkinStep`).
+   - Sem cabeçalho **"Test Step Execution Tracer (Virtual SQLite Logs)"**.
+   - Espaçamento confortável entre nome do caso e bloco de passos.
+
+4. **Seção de evidências visuais** (execuções reais):
+   - Por cenário: cartões **EVIDÊNCIAS DO CENÁRIO** com screenshots When/Then carregados via `GET /api/terminal/screenshot`.
+   - Trecho **ROBOT FRAMEWORK — LOG DO CENÁRIO** (`artifacts/robot-log-<id>.png`).
+   - Ao final: **RELATÓRIO ROBOT FRAMEWORK — SUÍTE COMPLETA** (`artifacts/robot-report.png` ou `report_screenshot_path`).
+   - Layout em **coluna única**; quebra de página reinicia no topo (evita imagens coladas no rodapé).
+
+5. **APIs de suporte ao PDF**:
+   - `GET /api/terminal/evidence?folder=<RUN-...>` — lista screenshots e artifacts.
+   - `GET /api/terminal/screenshot?folder=...&path=...` — serve imagem para embed no jsPDF.
+   - `GET /api/terminal/resolve-folder?executionId=...` — valida pasta no disco.
+
+6. **Regra permanente de paridade**:
+   - Qualquer alteração visual na tela Reports deve ser refletida no PDF (e vice-versa).
+
+### Validação automatizada
+
+- Script: `scripts/test-full-flow-pdf.mjs` — limpa DB, executa `login_tests`, persiste, clica **PDF** em `/reports`, valida tamanho > 300 KB e chamadas à API de screenshot.
+- E2E: `e2e/reports-pdf.spec.ts` — fluxo similar com Playwright.
 

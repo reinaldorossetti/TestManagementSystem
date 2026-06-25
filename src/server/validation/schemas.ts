@@ -44,7 +44,7 @@ export const executionInputSchema = z.object({
   report_screenshot_path: z.string().optional(),
 });
 
-/** Payload persisted after a (client-side) simulated run completes. */
+/** Payload persisted after a completed Robot run is parsed and saved. */
 export const persistRunSchema = z.object({
   execution: executionInputSchema,
   testCases: z.array(testCaseInputSchema),
