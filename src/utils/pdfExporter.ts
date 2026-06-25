@@ -116,6 +116,26 @@ const loadEvidenceManifest = async (resultsFolder: string): Promise<EvidenceMani
   }
 };
 
+/** Resolve pasta física em results/ via API (valida no disco). */
+const resolveResultsFolderForExport = async (exec: DbExecution): Promise<string | null> => {
+  try {
+    const params = new URLSearchParams({
+      executionId: exec.id,
+      resultsPath: exec.results_path || '',
+    });
+    if (exec.results_folder?.trim()) params.set('resultsFolder', exec.results_folder.trim());
+    const res = await fetch(`/api/terminal/resolve-folder?${params.toString()}`);
+    if (res.ok) {
+      const data = (await res.json()) as { folder?: string };
+      if (data.folder) return data.folder;
+    }
+  } catch {
+    /* fallback local */
+  }
+  const local = resolveResultsFolderFromExecution(exec);
+  return local || null;
+};
+
 const userFromTestName = (name: string): string | null => {
   const m = name.match(LOGIN_USERS);
   return m?.[1] ?? null;
@@ -207,6 +227,27 @@ const STATUS_COLORS: Record<StatusLabel, { bg: RGB; fg: RGB }> = {
 };
 
 const GHERKIN_KEYWORDS = /^(Dado|Dada|Given|Quando|When|Então|Entao|Then|E|And|Mas|But)\b/i;
+
+/** Nome padrão do relatório com evidências + timestamp da execução. */
+export const buildExecutionReportPdfFileName = (exec: DbExecution): string => {
+  const raw = (exec.timestamp || '').trim() || new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const [datePart, timePart = '00-00-00'] = raw.split(/\s+/);
+  const safeTime = timePart.replace(/:/g, '-');
+  return `Relatorio_Execucao_com_evidencias_${datePart}_${safeTime}.pdf`;
+};
+
+/** Exclui keywords internas do Robot; mantém apenas passos BDD/Gherkin no PDF. */
+const isBddGherkinStep = (st: DbStepLog): boolean => {
+  const text = st.text.trim();
+  if (!text || text.startsWith('...')) return false;
+  const robotInternal =
+    /^(New Browser|New Context|Close Browser|New Page|Fill Text|Click\b|Wait For Elements|Get Text|Get Url|Take Screenshot|Log\b|Should Be Equal|Get Cookie|\[Arguments\]|Capturar evidencia visual)/i;
+  if (robotInternal.test(text)) return false;
+  if (text.includes('${') && !/"[^"]*"/.test(text)) return false;
+  return true;
+};
+
+const filterBddSteps = (caseSteps: DbStepLog[]): DbStepLog[] => caseSteps.filter(isBddGherkinStep);
 
 /**
  * Dark-theme, screen-accurate PDF exporter for the TMS test-case management view
@@ -663,12 +704,41 @@ export const handleExportExecutionReportToPDF = async (
   testCases: DbTestCase[],
   steps: DbStepLog[],
   language: 'PT' | 'ENG' = 'PT',
-) => {
+): Promise<{ ok: boolean; error?: string }> => {
   try {
     const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
-    const resultsFolder = resolveResultsFolderFromExecution(exec);
+    const resultsFolder = await resolveResultsFolderForExport(exec);
+    if (!resultsFolder) {
+      return {
+        ok: false,
+        error: t(
+          'Nenhuma pasta de evidências em results/ para esta execução. Use o Terminal Ao Vivo para rodar os testes Robot (login_tests) antes de exportar o PDF.',
+          'No evidence folder in results/ for this run. Use the Live Terminal to run Robot tests (login_tests) before exporting the PDF.',
+        ),
+      };
+    }
     const evidence = await loadEvidenceManifest(resultsFolder);
+    const hasEvidenceOnDisk =
+      (evidence?.browserScreenshots?.length ?? 0) > 0 ||
+      Object.keys(evidence?.testReports ?? {}).length > 0 ||
+      Boolean(evidence?.suiteReport);
+
+    if (!hasEvidenceOnDisk) {
+      return {
+        ok: false,
+        error: t(
+          'Nenhuma evidência visual em results/ para esta execução. Execute os testes pelo Terminal Ao Vivo ou Executar Feature antes de exportar.',
+          'No visual evidence in results/ for this run. Run tests via Live Terminal or Execute Feature before exporting.',
+        ),
+      };
+    }
+
     const testCaseIndexById = new Map(testCases.map((tc, i) => [tc.id, i]));
+
+    let embeddedImageCount = 0;
+    const trackImageEmbed = () => {
+      embeddedImageCount += 1;
+    };
 
     const doc = instantiateDoc();
 
@@ -1130,7 +1200,7 @@ export const handleExportExecutionReportToPDF = async (
         doc.text(nameLine, marginX + 11, rowY + 8.8);
         currentY += rowH + 6;
 
-        const caseSteps = steps.filter((s) => s.test_case_id === tc.id);
+        const caseSteps = filterBddSteps(steps.filter((s) => s.test_case_id === tc.id));
         if (caseSteps.length === 0) {
           checkPageBreak(6);
           doc.setDrawColor(255, 102, 0);
@@ -1337,7 +1407,7 @@ export const handleExportExecutionReportToPDF = async (
             doc.setLineWidth(0.3);
             doc.roundedRect(imgX - 0.4, imgY - 0.4, imgW + 0.8, imgH + 0.8, 0.6, 0.6, 'S');
             doc.addImage(dataUrl, imgFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
-
+            trackImageEmbed();
             currentY = tileY + tileH + blockGap;
           }
 
@@ -1378,6 +1448,7 @@ export const handleExportExecutionReportToPDF = async (
             doc.setLineWidth(0.35);
             doc.roundedRect(imgX - 0.5, imgY - 0.5, reportImgW + 1, reportImgH + 1, 0.8, 0.8, 'S');
             doc.addImage(reportDataUrl, reportFormat, imgX, imgY, reportImgW, reportImgH, undefined, 'FAST');
+            trackImageEmbed();
             currentY = cardY + reportCardH + blockGap;
           }
         }
@@ -1426,6 +1497,7 @@ export const handleExportExecutionReportToPDF = async (
       doc.roundedRect(sx, imgBlockY, sw, imgH + 4, 2, 2, 'FD');
       const imgX = sx + (sw - imgW) / 2;
       doc.addImage(suiteReportUrl, suiteFormat, imgX, imgBlockY + 2, imgW, imgH, undefined, 'FAST');
+      trackImageEmbed();
       doc.setFont('courier', 'normal');
       doc.setFontSize(5);
       doc.setTextColor(71, 85, 105);
@@ -1433,9 +1505,24 @@ export const handleExportExecutionReportToPDF = async (
       currentY = imgBlockY + imgH + 10;
     }
 
-    const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    if (embeddedImageCount === 0) {
+      return {
+        ok: false,
+        error: t(
+          'Não foi possível incorporar screenshots no PDF. Verifique se a pasta results/ está acessível e execute os testes novamente.',
+          'Could not embed screenshots in the PDF. Check that results/ is accessible and re-run the tests.',
+        ),
+      };
+    }
+
+    const fileName = buildExecutionReportPdfFileName(exec);
     doc.save(fileName);
+    return { ok: true };
   } catch (err) {
     console.error('Execution report PDF exception:', err);
+    return {
+      ok: false,
+      error: language === 'PT' ? 'Falha ao gerar o PDF.' : 'Failed to generate PDF.',
+    };
   }
 };

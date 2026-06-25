@@ -114,19 +114,24 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
     }
   };
 
-  // Filter root executions based on search and status
-  const filteredExecutions = sqliteDb.executions.filter(exec => {
-    const matchesSearch = 
-      exec.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      exec.command.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      exec.results_path.toLowerCase().includes(searchTerm.toLowerCase());
-      
-    const matchesStatus = 
-      statusFilter === 'ALL' || 
-      exec.status === statusFilter;
-      
-    return matchesSearch && matchesStatus;
-  });
+  // Filter root executions based on search and status (newest first)
+  const filteredExecutions = sqliteDb.executions
+    .filter(exec => {
+      const matchesSearch =
+        exec.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        exec.command.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        exec.results_path.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStatus =
+        statusFilter === 'ALL' ||
+        exec.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      const byTime = b.timestamp.localeCompare(a.timestamp);
+      return byTime !== 0 ? byTime : b.id.localeCompare(a.id);
+    });
 
   const totalRuns = sqliteDb.executions.length;
 
@@ -280,7 +285,10 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
               type="button"
               onClick={async () => {
                 const linked = sqliteDb.test_cases.filter(tc => tc.execution_id === exec.id);
-                await handleExportExecutionReportToPDF(exec, linked, sqliteDb.steps, language);
+                const result = await handleExportExecutionReportToPDF(exec, linked, sqliteDb.steps, language);
+                if (!result.ok && result.error) {
+                  window.alert(result.error);
+                }
               }}
               className="flex items-center gap-1.5 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 px-2.5 py-1 rounded-lg text-rose-400 transition-all cursor-pointer font-bold shadow-sm"
               title={t("Exportar este relatório para PDF", "Export this report to PDF")}
@@ -822,6 +830,16 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                   {copiedPath === exec.results_path ? t('Copiado!', 'Copied!') : t('Copiar Caminho', 'Copy Path')}
                 </button>
               </div>
+
+              {(exec.results_path.includes('%ROBOT_HOME%') ||
+                /\/output_\d+\.xml/i.test(exec.results_path)) && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200">
+                  {t(
+                    'Esta execução é simulada (workspace) e não possui screenshots em results/. Para exportar o PDF com evidências visuais, execute os testes pelo Terminal Ao Vivo e exporte essa execução.',
+                    'This is a simulated (workspace) run with no screenshots in results/. To export a PDF with visual evidence, run tests via the Live Terminal and export that execution.',
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 

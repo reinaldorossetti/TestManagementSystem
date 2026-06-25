@@ -9,13 +9,33 @@ export function buildRunFolderName(timestamp: string): string {
   return `RUN-${safeDate}_${safeTime}-${suffix}`;
 }
 
-/** Resolve a pasta em results/ a partir da execução persistida. */
+/** Nome válido de subpasta em results/ (exclui caminhos simulados output_*.xml). */
+export function isPlausibleResultsFolderName(name: string): boolean {
+  const n = name.trim();
+  if (!n) return false;
+  if (/\.xml$/i.test(n)) return false;
+  if (/^output_/i.test(n)) return false;
+  if (/%ROBOT_HOME%/i.test(n)) return false;
+  return true;
+}
+
+/** Extrai pasta de results/ a partir do caminho do output.xml (somente nomes válidos). */
+export function extractResultsFolderFromPath(resultsPath: string): string | null {
+  const normalized = resultsPath.replace(/\\/g, '/');
+  const match = normalized.match(/(?:^|\/)results\/([^/]+)(?:\/|$)/i);
+  const candidate = match?.[1] ?? null;
+  return candidate && isPlausibleResultsFolderName(candidate) ? candidate : null;
+}
+
+/** Resolve a pasta em results/ a partir da execução persistida (heurística local). */
 export function resolveResultsFolderFromExecution(exec: DbExecution): string {
-  if (exec.results_folder?.trim()) return exec.results_folder.trim();
-  if (exec.results_path?.trim()) {
-    const normalized = exec.results_path.replace(/\\/g, '/');
-    const match = normalized.match(/(?:^|\/)results\/([^/]+)(?:\/|$)/i);
-    if (match?.[1]) return match[1];
+  if (exec.results_folder?.trim() && isPlausibleResultsFolderName(exec.results_folder)) {
+    return exec.results_folder.trim();
   }
+  const fromPath = exec.results_path?.trim()
+    ? extractResultsFolderFromPath(exec.results_path)
+    : null;
+  if (fromPath) return fromPath;
+  if (isPlausibleResultsFolderName(exec.id)) return exec.id;
   return exec.id;
 }

@@ -4,7 +4,12 @@ import path from 'node:path';
 
 const base = process.argv[2] || 'http://localhost:3001';
 const runFolder = process.argv[3] || 'RUN-2026-06-25_21-29-52-92370';
-const outPdf = path.resolve('results', 'Relatorio_Execucao_com_evidencias.pdf');
+const outPdf = process.argv[4]
+  ? path.resolve(process.argv[4])
+  : path.resolve(
+      'results',
+      `Relatorio_Execucao_com_evidencias_${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-').replace(' ', '_')}.pdf`,
+    );
 
 console.log('Base URL:', base);
 console.log('Run folder:', runFolder);

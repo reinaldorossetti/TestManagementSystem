@@ -15,6 +15,7 @@ ${SENHA}          secret_sauce
 
 *** Test Cases ***
 Cenário: CT01 - Login valido com standard_user autentica e exibe a area de produtos
+    [Tags]    LT01
     [Documentation]    Cenário positivo: usuário padrão acessa o catálogo.
     Given que o usuario esta na tela de login
     When realiza login com o usuario "standard_user" e a senha valida
@@ -22,12 +23,14 @@ Cenário: CT01 - Login valido com standard_user autentica e exibe a area de prod
     And o nome do usuario autenticado deve ser "standard_user"
 
 Cenário: CT02 - Login bloqueado com locked_out_user exibe mensagem de erro
+    [Tags]    LT02
     [Documentation]    Cenário negativo: usuário bloqueado não autentica.
     Given que o usuario esta na tela de login
     When realiza login com o usuario "locked_out_user" e a senha valida
     Then deve exibir o alerta de usuario bloqueado
 
 Cenário: CT03 - Login valido com problem_user autentica e exibe a area de produtos
+    [Tags]    LT03
     [Documentation]    Usuário com problemas visuais ainda autentica com sucesso.
     Given que o usuario esta na tela de login
     When realiza login com o usuario "problem_user" e a senha valida
@@ -35,6 +38,7 @@ Cenário: CT03 - Login valido com problem_user autentica e exibe a area de produ
     And o nome do usuario autenticado deve ser "problem_user"
 
 Cenário: CT04 - Login valido com performance_glitch_user autentica e exibe a area de produtos
+    [Tags]    LT04
     [Documentation]    Usuário lento autentica (pode demorar mais para carregar).
     Given que o usuario esta na tela de login
     When realiza login com o usuario "performance_glitch_user" e a senha valida
@@ -42,6 +46,7 @@ Cenário: CT04 - Login valido com performance_glitch_user autentica e exibe a ar
     And o nome do usuario autenticado deve ser "performance_glitch_user"
 
 Cenário: CT05 - Login valido com error_user autentica e exibe a area de produtos
+    [Tags]    LT05
     [Documentation]    Usuário com erros funcionais ainda autentica com sucesso.
     Given que o usuario esta na tela de login
     When realiza login com o usuario "error_user" e a senha valida
@@ -49,6 +54,7 @@ Cenário: CT05 - Login valido com error_user autentica e exibe a area de produto
     And o nome do usuario autenticado deve ser "error_user"
 
 Cenário: CT06 - Login valido com visual_user autentica e exibe a area de produtos
+    [Tags]    LT06
     [Documentation]    Usuário com glitches visuais ainda autentica com sucesso.
     Given que o usuario esta na tela de login
     When realiza login com o usuario "visual_user" e a senha valida

@@ -1,5 +1,6 @@
 import { prisma } from '@/src/lib/db';
 import type { DbExecution, DbTestCase, DbStepLog } from '@/src/utils/sqliteEngine';
+import { extractResultsFolderFromPath } from '@/src/utils/robotResultsFolder';
 import { toDbExecution, toDbTestCase, toDbStep } from '@/src/server/mappers/dbMappers';
 import type { PersistRunInput } from '@/src/server/validation/schemas';
 import type { DbClient } from './types';
@@ -43,7 +44,10 @@ export async function insertRun(payload: PersistRunInput, client: DbClient): Pro
       skipped: execution.skipped ?? 0,
       status: execution.status,
       resultsPath: execution.results_path,
-      resultsFolder: execution.results_folder ?? null,
+      resultsFolder:
+        execution.results_folder?.trim() ||
+        extractResultsFolderFromPath(execution.results_path) ||
+        null,
       reportScreenshotPath: execution.report_screenshot_path ?? null,
     },
   });

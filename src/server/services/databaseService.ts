@@ -1,5 +1,6 @@
 import { prisma } from '@/src/lib/db';
 import type { VirtualDatabase } from '@/src/utils/sqliteEngine';
+import { extractResultsFolderFromPath } from '@/src/utils/robotResultsFolder';
 import { seedDatabase } from '@/src/server/db/seed';
 import {
   listExecutions,
@@ -66,6 +67,10 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
     await tx.testFolder.deleteMany();
 
     for (const execution of db.executions) {
+      const resultsFolder =
+        execution.results_folder?.trim() ||
+        extractResultsFolderFromPath(execution.results_path) ||
+        null;
       await tx.execution.create({
         data: {
           id: execution.id,
@@ -78,7 +83,7 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
           skipped: 0,
           status: execution.status,
           resultsPath: execution.results_path,
-          resultsFolder: execution.results_folder ?? null,
+          resultsFolder,
           reportScreenshotPath: execution.report_screenshot_path ?? null,
         },
       });

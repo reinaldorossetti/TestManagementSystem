@@ -53,6 +53,19 @@ import { ExecutionReports } from './components/ExecutionReports';
 import { LiveTerminal } from './components/LiveTerminal';
 import { handleExportToExcel } from './utils/excelExporter';
 import { handleExportTestCasesToPDF } from './utils/pdfExporter';
+import { buildFeatureRobotCommand } from './utils/robotCommands';
+import {
+  createRunFolderForTimestamp,
+  formatRobotRunTimestamp,
+  persistRobotRunOutput,
+  runRobotCommandStreaming,
+} from './utils/robotRunner';
+import {
+  buildExecutionTagsFromRobotTestTags,
+  extractRobotExecutionTags,
+  type ExecutionTagOption,
+  type RobotTestTagEntry,
+} from './utils/robotTagLoader';
 import { useDatabase } from './hooks/useDatabase';
 import { createTranslator } from './utils/i18n';
 
@@ -356,42 +369,60 @@ export default function App({ initialTab }: AppProps = {}) {
   const t = createTranslator(language);
 
   // Command configurations
-  const [executionTags, setExecutionTags] = useState<{ value: string; label: string }[]>(() => {
-    const initialParsed = parseGherkinFeature(INITIAL_GHERKIN_CONTENT);
-    const initialTags: string[] = [];
-    initialParsed.scenarios.forEach(sc => {
-      sc.tags.forEach(t => {
-        if (t && !initialTags.includes(t)) {
-          initialTags.push(t);
-        }
-      });
-    });
-
-    const defaultTags = [
-      { value: 'all_scenarios', label: '@all_scenarios (Suite Completa)' }
-    ];
-
-    initialTags.forEach(t => {
-      const clean = t.replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-      defaultTags.push({ value: clean, label: t.startsWith('@') ? t : `@${t}` });
-    });
-
-    return defaultTags;
-  });
-  const [filterTag, setFilterTag] = useState<string>(() => {
-    const initialParsed = parseGherkinFeature(INITIAL_GHERKIN_CONTENT);
-    if (initialParsed.scenarios.length > 0 && initialParsed.scenarios[0].tags.length > 0) {
-      return initialParsed.scenarios[0].tags[0].replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-    }
-    return 'all_scenarios';
-  });
+  const [executionTags, setExecutionTags] = useState<ExecutionTagOption[]>([]);
+  const [filterTag, setFilterTag] = useState<string>('');
   const [newTagInput, setNewTagInput] = useState<string>('');
   const [argsFile, setArgsFile] = useState<string>('project_args_file.txt');
   const [customCommand, setCustomCommand] = useState<string>('');
 
+  const applyExecutionTagsFromRobot = (
+    entries: RobotTestTagEntry[],
+    options?: { log?: boolean; logPrefix?: string },
+  ) => {
+    const clearedTags = buildExecutionTagsFromRobotTestTags(entries);
+    setExecutionTags(clearedTags);
+
+    if (clearedTags.length > 0) {
+      setFilterTag(clearedTags[0].value);
+      if (options?.log !== false) {
+        appendTerminalLog(
+          `${options?.logPrefix ?? '[TAGS]'} Test Tags / [Tags] Robot: @${clearedTags[0].value}`,
+          'success',
+        );
+      }
+    } else {
+      setFilterTag('');
+      if (options?.log !== false) {
+        appendTerminalLog(
+          `${options?.logPrefix ?? '[TAGS]'} Nenhuma tag Robot encontrada em robot-sample/.`,
+          'info',
+        );
+      }
+    }
+  };
+
+  const refreshExecutionTagsFromRobotSample = async (options?: { log?: boolean }) => {
+    try {
+      const res = await fetch('/api/terminal/robot-tags');
+      if (!res.ok) throw new Error(res.statusText);
+      const data = (await res.json()) as { tags: RobotTestTagEntry[] };
+      applyExecutionTagsFromRobot(data.tags ?? [], {
+        log: options?.log,
+        logPrefix: '[TAGS]',
+      });
+    } catch (error) {
+      if (options?.log !== false) {
+        appendTerminalLog(
+          `[TAGS] Falha ao carregar Test Tags: ${error instanceof Error ? error.message : 'erro'}`,
+          'warn',
+        );
+      }
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem('cardmais_execution_tags', JSON.stringify(executionTags));
-  }, [executionTags]);
+    void refreshExecutionTagsFromRobotSample({ log: false });
+  }, []);
 
   const handleAddCustomTag = () => {
     if (!newTagInput.trim()) return;
@@ -441,40 +472,13 @@ export default function App({ initialTab }: AppProps = {}) {
       appendTerminalLog(`[IMPORT] Arquivo "${filename}" carregado com sucesso via upload!`, 'success');
       appendTerminalLog(`==============================================================================`, 'header');
       appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste identificados com sucesso.`, 'info');
-      
-      // Auto-extract tags
-      const newTagsFound: string[] = [];
-      parsed.scenarios.forEach(sc => {
-        sc.tags.forEach(t => {
-          if (t && !newTagsFound.includes(t)) {
-            newTagsFound.push(t);
-          }
-        });
-      });
-      
-      // Clear current execution tags completely and rebuild with the new tags + suite option
-      const clearedTags = [
-        { value: 'all_scenarios', label: '@all_scenarios (Suite Completa)' }
-      ];
-      
-      if (newTagsFound.length > 0) {
-        newTagsFound.forEach(nt => {
-          const clean = nt.replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-          const exists = clearedTags.some(item => item.value === clean);
-          if (!exists) {
-            clearedTags.push({ value: clean, label: nt.startsWith('@') ? nt : `@${nt}` });
-          }
-        });
-        setExecutionTags(clearedTags);
-        
-        // Auto-select the first tag we found
-        const firstClean = newTagsFound[0].replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-        setFilterTag(firstClean);
-        appendTerminalLog(`[TAGS] Lista de tags resetada. Ativada tag correspondente do arquivo: @${firstClean}`, 'success');
-      } else {
-        setExecutionTags(clearedTags);
-        setFilterTag('all_scenarios');
-        appendTerminalLog(`[TAGS] Lista de tags resetada para a suite completa. Nenhum tag específica encontrada.`, 'info');
+
+      if (filename.toLowerCase().endsWith('.robot')) {
+        const robotTags = extractRobotExecutionTags(text).map((tag) => ({
+          tag,
+          sourceFile: filename,
+        }));
+        applyExecutionTagsFromRobot(robotTags, { logPrefix: '[TAGS]' });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -523,17 +527,13 @@ export default function App({ initialTab }: AppProps = {}) {
   };
 
   const handleDeleteTag = (valueToDelete: string) => {
-    if (executionTags.length <= 1) {
-      alert("Você deve manter pelo menos uma tag de execução ativa no sistema.");
-      return;
-    }
-    const updated = executionTags.filter(t => t.value !== valueToDelete);
-    setExecutionTags(updated);
-    
-    // If deleted tag was selected, choose another one
-    if (filterTag === valueToDelete) {
-      setFilterTag(updated[0].value);
-    }
+    setExecutionTags((prev) => {
+      const updated = prev.filter((t) => t.value !== valueToDelete);
+      setFilterTag((current) =>
+        current === valueToDelete ? (updated[0]?.value ?? '') : current,
+      );
+      return updated;
+    });
   };
 
   const handleStartEditTag = (index: number) => {
@@ -692,9 +692,6 @@ export default function App({ initialTab }: AppProps = {}) {
   const [formSphereExpectedResult, setFormSphereExpectedResult] = useState<string>('');
   const [formSphereObservation, setFormSphereObservation] = useState<string>('');
 
-  // Terminal scroll helper
-  const terminalLogsBottomRef = useRef<HTMLDivElement>(null);
-
   // Recompute dashboard stats whenever the database changes.
   // Persistence is handled by useDatabase (backend API), no longer localStorage.
   useEffect(() => {
@@ -750,18 +747,8 @@ export default function App({ initialTab }: AppProps = {}) {
 
   // Command preview compiler helper
   const getCompiledCommand = () => {
-    return `python -m robot -A ${argsFile} --timestampoutputs -i ${filterTag || 'all_scenarios'} ./`;
-  };
-
-  // Run initial calculations on load
-  useEffect(() => {
-    scrollToTerminalBottom();
-  }, [terminalLogs]);
-
-  const scrollToTerminalBottom = () => {
-    if (terminalLogsBottomRef.current) {
-      terminalLogsBottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    const active = executionTags.find((t) => t.value === filterTag);
+    return buildFeatureRobotCommand(filterTag, active?.sourceFile);
   };
 
   const handleOpenReportHTML = (e?: React.MouseEvent) => {
@@ -833,39 +820,6 @@ export default function App({ initialTab }: AppProps = {}) {
     setTerminalLogs([]);
     appendTerminalLog(`[SYSTEM] Arquivo .feature atualizado pelo usuário e compilado com sucesso!`, 'success');
     appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste BDD mapeados e sincronizados para execução.`, 'info');
-
-    // Auto-extract tags when saved
-    const newTagsFound: string[] = [];
-    parsed.scenarios.forEach(sc => {
-      sc.tags.forEach(t => {
-        if (t && !newTagsFound.includes(t)) {
-          newTagsFound.push(t);
-        }
-      });
-    });
-
-    const clearedTags = [
-      { value: 'all_scenarios', label: '@all_scenarios (Suite Completa)' }
-    ];
-
-    if (newTagsFound.length > 0) {
-      newTagsFound.forEach(nt => {
-        const clean = nt.replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-        const exists = clearedTags.some(item => item.value === clean);
-        if (!exists) {
-          clearedTags.push({ value: clean, label: nt.startsWith('@') ? nt : `@${nt}` });
-        }
-      });
-      setExecutionTags(clearedTags);
-      
-      const firstClean = newTagsFound[0].replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-      setFilterTag(firstClean);
-      appendTerminalLog(`[TAGS] Lista de tags atualizada. Ativada tag correspondente do arquivo: @${firstClean}`, 'success');
-    } else {
-      setExecutionTags(clearedTags);
-      setFilterTag('all_scenarios');
-      appendTerminalLog(`[TAGS] Lista de tags resetada para a suite completa. Nenhuma tag específica encontrada.`, 'info');
-    }
   };
 
   // SQLite manual SQL execute controller (read-only, runs on the backend).
@@ -965,38 +919,6 @@ export default function App({ initialTab }: AppProps = {}) {
     setTerminalLogs([]);
     appendTerminalLog(`[TESTLINK] Carregado especificação do repositório no Workspace principal!`, 'success');
     appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste Gherkin mapeados e prontos para simulação.`, 'info');
-
-    // Auto-extract tags
-    const newTagsFound: string[] = [];
-    parsed.scenarios.forEach(sc => {
-      sc.tags.forEach(t => {
-        if (t && !newTagsFound.includes(t)) {
-          newTagsFound.push(t);
-        }
-      });
-    });
-
-    const clearedTags = [
-      { value: 'all_scenarios', label: '@all_scenarios (Suite Completa)' }
-    ];
-
-    if (newTagsFound.length > 0) {
-      newTagsFound.forEach(nt => {
-        const clean = nt.replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-        const exists = clearedTags.some(item => item.value === clean);
-        if (!exists) {
-          clearedTags.push({ value: clean, label: nt.startsWith('@') ? nt : `@${nt}` });
-        }
-      });
-      setExecutionTags(clearedTags);
-      
-      const firstClean = newTagsFound[0].replace(/^@/, '').replace(/\s+/g, '_').toLowerCase();
-      setFilterTag(firstClean);
-      appendTerminalLog(`[TAGS] Ativado tag correspondente: @${firstClean}`, 'success');
-    } else {
-      setExecutionTags(clearedTags);
-      setFilterTag('all_scenarios');
-    }
   };
 
   const handleOpenCreateSpec = () => {
@@ -1450,6 +1372,75 @@ export default function App({ initialTab }: AppProps = {}) {
     window.open(`${window.location.origin}/tms`, '_blank');
   };
 
+  /** Execução real Robot (mesmo fluxo do Terminal Ao Vivo), filtrada pela tag da feature. */
+  const handleRunFeatureReal = async () => {
+    if (isExecuting) return;
+    if (!filterTag.trim()) {
+      appendTerminalLog(
+        t(
+          '[ERRO] Nenhuma tag Robot selecionada. Abra Configurar tag e selecione uma tag (Test Tags ou [Tags]).',
+          '[ERROR] No Robot tag selected. Open Configure tag and pick a Test Tags or [Tags] entry.',
+        ),
+        'error',
+      );
+      return;
+    }
+    setIsExecuting(true);
+    setTerminalLogs([]);
+
+    const tag = filterTag;
+    const active = executionTags.find((t) => t.value === tag);
+    const cmd = buildFeatureRobotCommand(tag, active?.sourceFile);
+    const timestamp = formatRobotRunTimestamp();
+    const runFolder = createRunFolderForTimestamp(timestamp);
+
+    appendTerminalLog(`$ ${cmd}`, 'cmd');
+
+    let lineBuffer = '';
+    const onChunk = (chunk: string) => {
+      lineBuffer += chunk;
+      const lines = lineBuffer.split(/\r?\n/);
+      lineBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.length > 0) appendTerminalLog(line, 'info');
+      }
+    };
+
+    try {
+      const { aborted } = await runRobotCommandStreaming(cmd, runFolder, onChunk);
+      if (lineBuffer.trim()) appendTerminalLog(lineBuffer.trim(), 'info');
+
+      if (!aborted) {
+        const result = await persistRobotRunOutput(runFolder, cmd, timestamp);
+        if (result.ok) {
+          const { execution, testCases, steps } = result.data;
+          setSqliteDb((prev) => ({
+            ...prev,
+            executions: [execution, ...prev.executions],
+            test_cases: [...testCases, ...prev.test_cases],
+            steps: [...steps, ...prev.steps],
+          }));
+          appendTerminalLog(
+            `[TMS] Execução registrada: ${execution.id} — ${execution.total_tests} testes (${execution.passed} ok, ${execution.failed} falhas).`,
+            'success',
+          );
+          if (execution.report_screenshot_path) {
+            appendTerminalLog(
+              '[TMS] Report Robot capturado (report.html + log por cenário) para o PDF.',
+              'info',
+            );
+          }
+        } else {
+          appendTerminalLog(`[TMS] Sem persistência: ${result.error}`, 'warn');
+        }
+      }
+    } catch (err) {
+      appendTerminalLog(`[ERRO] ${(err as Error).message}`, 'error');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Automated Test Simulator Runner
   const handleRunRobotFramework = async (customTagSpec?: string, scenarioIdToRunOnly?: string) => {
     if (isExecuting) return;
@@ -1723,7 +1714,7 @@ export default function App({ initialTab }: AppProps = {}) {
   useEffect(() => {
     if (pendingExecutionOnLoad && parsedFeature && !isExecuting) {
       setPendingExecutionOnLoad(false);
-      handleRunRobotFramework('all_scenarios');
+      handleRunFeatureReal();
     }
   }, [parsedFeature, pendingExecutionOnLoad, isExecuting]);
 
@@ -2728,7 +2719,9 @@ export default function App({ initialTab }: AppProps = {}) {
                   <label className="block text-slate-400 font-mono text-[10px]">{t("Tag de Execução (-i / --include):", "Execution Tag (-i / --include):")}</label>
                   <button
                     type="button"
-                    onClick={() => setIsTagModalOpen(true)}
+                    onClick={() => {
+                      void refreshExecutionTagsFromRobotSample().then(() => setIsTagModalOpen(true));
+                    }}
                     className="text-[10px] text-[#FF6600] border border-[#FF6600]/30 hover:border-[#FF6600]/60 hover:bg-[#FF6600]/10 px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all font-bold"
                   >
                     <Settings className="w-3.5 h-3.5" />
@@ -3049,25 +3042,38 @@ export default function App({ initialTab }: AppProps = {}) {
             </div>
 
             {activeTab === 'terminal' && (
-              <button
-                type="button"
-                onClick={() => handleRunRobotFramework('all_scenarios')}
-                disabled={isExecuting}
-                className="flex items-center gap-2 bg-[#FF6600] hover:bg-[#FF6600]/90 text-white font-black text-xs px-5 py-2.5 rounded-lg shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none cursor-pointer"
-                title={t("Executar todos os testes da feature (.feature)", "Run all feature tests (.feature)")}
-              >
-                {isExecuting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>{t("Executando Feature...", "Running Feature...")}</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-white animate-pulse" />
-                    <span>{t("Executar Feature", "Execute Feature")}</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.assign('/reports');
+                  }}
+                  className="flex items-center gap-2 bg-slate-950 hover:bg-slate-900 text-slate-200 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-800 hover:border-sky-500 active:scale-95 transition-all select-none cursor-pointer"
+                  title={t('Abrir relatórios de execução', 'Open execution reports')}
+                >
+                  <FileText className="w-4 h-4 text-sky-400" />
+                  <span>{t('Reporte', 'Report')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunFeatureReal()}
+                  disabled={isExecuting}
+                  className="flex items-center gap-2 bg-[#FF6600] hover:bg-[#FF6600]/90 text-white font-black text-xs px-5 py-2.5 rounded-lg shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none cursor-pointer"
+                  title={t('Executar todos os testes da feature (.feature)', 'Run all feature tests (.feature)')}
+                >
+                  {isExecuting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>{t('Executando Feature...', 'Running Feature...')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-white animate-pulse" />
+                      <span>{t('Executar Feature', 'Execute Feature')}</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
 
@@ -3141,7 +3147,6 @@ export default function App({ initialTab }: AppProps = {}) {
                             </div>
                           );
                         })}
-                        <div ref={terminalLogsBottomRef} />
                       </div>
                     )}
                   </div>
@@ -3530,7 +3535,7 @@ export default function App({ initialTab }: AppProps = {}) {
               <ExecutionReports 
                 sqliteDb={sqliteDb}
                 onClearHistory={handleClearExecutionHistory}
-                onRunFeature={() => handleRunRobotFramework()}
+                onRunFeature={() => handleRunFeatureReal()}
                 language={language}
                 onChangeLanguage={setLanguage}
               />
@@ -3958,7 +3963,7 @@ export default function App({ initialTab }: AppProps = {}) {
                 <Sliders className="w-5 h-5 text-[#FF6600]" />
                 <div>
                   <h3 className="font-extrabold text-sm uppercase text-slate-200 tracking-tight">Configuração de Tags de Execução</h3>
-                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">Gerencie as diretivas de inclusão (-i / --include)</p>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t('Tags de Test Tags e [Tags] nos arquivos .robot', 'Tags from Test Tags and [Tags] in .robot files')}</p>
                 </div>
               </div>
               <button 
@@ -3985,7 +3990,7 @@ export default function App({ initialTab }: AppProps = {}) {
                     const isActive = filterTag === tag.value;
                     
                     return (
-                      <div key={idx} className={`p-3.5 flex items-center justify-between gap-4 transition-all ${isActive ? 'bg-[#FF6600]/5' : ''}`}>
+                      <div key={tag.value} className={`p-3.5 flex items-center justify-between gap-4 transition-all ${isActive ? 'bg-[#FF6600]/5' : ''}`}>
                         {isEditingThis ? (
                           <div className="flex-1 flex flex-col sm:flex-row gap-2">
                             <div className="flex-1 flex flex-col gap-1">
@@ -4049,8 +4054,7 @@ export default function App({ initialTab }: AppProps = {}) {
                                 type="button"
                                 onClick={() => handleDeleteTag(tag.value)}
                                 title="Remover Tag"
-                                disabled={executionTags.length <= 1}
-                                className="p-1.5 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition-all border border-slate-800/40 disabled:opacity-40 disabled:pointer-events-none"
+                                className="p-1.5 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition-all border border-slate-800/40"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
