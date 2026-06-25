@@ -25,6 +25,8 @@ export const testCaseInputSchema = z.object({
   category: z.string(),
   status: testStatus,
   duration_s: z.number(),
+  robot_test_id: z.string().optional(),
+  report_screenshot_path: z.string().optional(),
 });
 
 export const executionInputSchema = z.object({
@@ -38,6 +40,8 @@ export const executionInputSchema = z.object({
   skipped: z.number().int().optional().default(0),
   status: executionStatus,
   results_path: z.string(),
+  results_folder: z.string().optional(),
+  report_screenshot_path: z.string().optional(),
 });
 
 /** Payload persisted after a (client-side) simulated run completes. */

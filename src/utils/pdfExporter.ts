@@ -70,21 +70,27 @@ const deriveTargetSpec = (command: string, t: (pt: string, en: string) => string
 
 /** Carrega screenshot do disco (via API) como data URL para embed no jsPDF. */
 const loadScreenshotDataUrl = async (resultsFolder: string, screenshotPath: string): Promise<string | null> => {
-  try {
-    const params = new URLSearchParams({ folder: resultsFolder, path: screenshotPath });
-    const res = await fetch(`/api/terminal/screenshot?${params.toString()}`);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    if (!blob.size) return null;
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
+  const toDataUrl = async (params: URLSearchParams): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/terminal/screenshot?${params.toString()}`);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (!blob.size) return null;
+      return await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const relPath = screenshotPath.replace(/\\/g, '/');
+  const withFolder = await toDataUrl(new URLSearchParams({ folder: resultsFolder, path: relPath }));
+  if (withFolder) return withFolder;
+  return toDataUrl(new URLSearchParams({ runId: resultsFolder, path: relPath }));
 };
 
 const imageFormatFromDataUrl = (dataUrl: string): 'PNG' | 'JPEG' =>
@@ -115,38 +121,64 @@ const userFromTestName = (name: string): string | null => {
   return m?.[1] ?? null;
 };
 
-/** Resolve caminho da imagem do passo (banco ou disco em results/<folder>/). */
+/** Caminho provável da imagem do passo (sem listar a pasta no disco). */
+const guessStepScreenshotPath = (st: DbStepLog, tc: DbTestCase): string | undefined => {
+  const user = userFromTestName(tc.name);
+  const text = st.text.toLowerCase();
+  if (st.step_type === 'WHEN' && user) return `browser/screenshot/when-${user}.png`;
+  if (text.includes('bloqueado') || tc.name.includes('locked_out'))
+    return 'browser/screenshot/then-bloqueado.png';
+  if (text.includes('produtos') || text.includes('area de produtos'))
+    return 'browser/screenshot/then-produtos.png';
+  if (text.includes('usuario autenticado') || text.includes('nome do usuario')) {
+    if (user) return `browser/screenshot/then-usuario-${user}.png`;
+  }
+  return undefined;
+};
+
+/** Resolve caminho da imagem do passo (banco, disco ou heurística). */
 const resolveStepScreenshotPath = (
   st: DbStepLog,
   tc: DbTestCase,
   manifest: EvidenceManifest | null,
 ): string | undefined => {
   if (st.screenshot_path) return st.screenshot_path;
-  if (!manifest?.browserScreenshots.length) return undefined;
-  const shots = manifest.browserScreenshots;
-  const user = userFromTestName(tc.name);
-  const text = st.text.toLowerCase();
+  if (manifest?.browserScreenshots.length) {
+    const shots = manifest.browserScreenshots;
+    const user = userFromTestName(tc.name);
+    const text = st.text.toLowerCase();
 
-  if (st.step_type === 'WHEN' && user) {
-    return shots.find((s) => s.includes(`when-${user}`));
+    if (st.step_type === 'WHEN' && user) {
+      return shots.find((s) => s.includes(`when-${user}`));
+    }
+    if (text.includes('bloqueado') || tc.name.includes('locked_out')) {
+      return shots.find((s) => s.includes('then-bloqueado'));
+    }
+    if (text.includes('produtos') || text.includes('area de produtos')) {
+      return shots.find((s) => s.includes('then-produtos'));
+    }
+    if (text.includes('usuario autenticado') || text.includes('nome do usuario')) {
+      if (user) return shots.find((s) => s.includes(`then-usuario-${user}`));
+    }
   }
-  if (text.includes('bloqueado') || tc.name.includes('locked_out')) {
-    return shots.find((s) => s.includes('then-bloqueado'));
-  }
-  if (text.includes('produtos') || text.includes('area de produtos')) {
-    return shots.find((s) => s.includes('then-produtos'));
-  }
-  if (text.includes('usuario autenticado') || text.includes('nome do usuario')) {
-    if (user) return shots.find((s) => s.includes(`then-usuario-${user}`));
-  }
-  return undefined;
+  return guessStepScreenshotPath(st, tc);
 };
 
-const resolveTestReportPath = (tc: DbTestCase, manifest: EvidenceManifest | null): string | undefined => {
+const resolveTestReportPath = (
+  tc: DbTestCase,
+  manifest: EvidenceManifest | null,
+  testIndex?: number,
+): string | undefined => {
   if (tc.report_screenshot_path) return tc.report_screenshot_path;
   if (tc.robot_test_id && manifest?.testReports[tc.robot_test_id]) {
     return manifest.testReports[tc.robot_test_id];
   }
+  if (manifest?.testReports && testIndex !== undefined) {
+    const keys = Object.keys(manifest.testReports).sort();
+    if (manifest.testReports[keys[testIndex]]) return manifest.testReports[keys[testIndex]];
+  }
+  if (tc.robot_test_id) return `artifacts/robot-log-${tc.robot_test_id}.png`;
+  if (testIndex !== undefined) return `artifacts/robot-log-s1-t${testIndex + 1}.png`;
   return undefined;
 };
 
@@ -636,6 +668,7 @@ export const handleExportExecutionReportToPDF = async (
     const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
     const resultsFolder = resolveResultsFolderFromExecution(exec);
     const evidence = await loadEvidenceManifest(resultsFolder);
+    const testCaseIndexById = new Map(testCases.map((tc, i) => [tc.id, i]));
 
     const doc = instantiateDoc();
 
@@ -1167,7 +1200,7 @@ export const handleExportExecutionReportToPDF = async (
         const evidenceSteps = caseSteps.filter(
           (s) => resolveStepScreenshotPath(s, tc, evidence) !== undefined,
         );
-        const testReportPath = resolveTestReportPath(tc, evidence);
+        const testReportPath = resolveTestReportPath(tc, evidence, testCaseIndexById.get(tc.id));
         const hasScenarioReport = Boolean(testReportPath);
         if (evidenceSteps.length > 0 || hasScenarioReport) {
           checkPageBreak(36);
@@ -1197,6 +1230,11 @@ export const handleExportExecutionReportToPDF = async (
           doc.setTextColor(226, 232, 240);
           const scenTitle = (doc.splitTextToSize(tc.name, sectionW - 50) as string[])[0] || tc.name;
           doc.text(scenTitle, sectionX + 6 + doc.getTextWidth(tc.id) + 4, currentY + 10.5);
+
+          doc.setFont('courier', 'normal');
+          doc.setFontSize(5);
+          doc.setTextColor(71, 85, 105);
+          doc.text(`results/${resultsFolder}`, sectionX + sectionW - 4 - doc.getTextWidth(`results/${resultsFolder}`), currentY + 5.5);
 
           drawStatusIcon(pageWidth - marginX - 10, currentY + 8, 2, tc.status);
           currentY += headerH + 4;
@@ -1271,9 +1309,10 @@ export const handleExportExecutionReportToPDF = async (
           }
 
           // Report Robot — trecho do log.html deste cenário
-          if (hasScenarioReport && tc.report_screenshot_path) {
-            const reportUrl = await loadScreenshotDataUrl(exec.id, tc.report_screenshot_path);
+          if (hasScenarioReport && testReportPath) {
+            const reportUrl = await loadScreenshotDataUrl(resultsFolder, testReportPath);
             if (reportUrl) {
+              const reportFormat = imageFormatFromDataUrl(reportUrl);
               const { width: natW, height: natH } = await probeImageSize(reportUrl);
               const cardX = sectionX + 6;
               const cardW = sectionW - 12;
@@ -1309,7 +1348,7 @@ export const handleExportExecutionReportToPDF = async (
               doc.setDrawColor(56, 189, 248);
               doc.setLineWidth(0.35);
               doc.roundedRect(imgX - 0.5, imgY - 0.5, imgW + 1, imgH + 1, 0.8, 0.8, 'S');
-              doc.addImage(reportUrl, 'PNG', imgX, imgY, imgW, imgH, undefined, 'FAST');
+              doc.addImage(reportUrl, reportFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
               currentY += cardH + 5;
             }
           }
@@ -1323,9 +1362,11 @@ export const handleExportExecutionReportToPDF = async (
     }
 
     // ---- Report Robot Framework (suíte completa) ----
-    if (exec.report_screenshot_path) {
-      const suiteReportUrl = await loadScreenshotDataUrl(exec.id, exec.report_screenshot_path);
-      if (suiteReportUrl) {
+    const suiteReportPath =
+      exec.report_screenshot_path ?? evidence?.suiteReport ?? 'artifacts/robot-report.png';
+    const suiteReportUrl = await loadScreenshotDataUrl(resultsFolder, suiteReportPath);
+    if (suiteReportUrl) {
+        const suiteFormat = imageFormatFromDataUrl(suiteReportUrl);
         checkPageBreak(40);
         const sx = marginX + 2;
         const sw = contentWidth - 4;
@@ -1352,13 +1393,12 @@ export const handleExportExecutionReportToPDF = async (
         doc.setLineWidth(0.35);
         doc.roundedRect(sx, currentY, sw, imgH + 4, 2, 2, 'FD');
         const imgX = sx + (sw - imgW) / 2;
-        doc.addImage(suiteReportUrl, 'PNG', imgX, currentY + 2, imgW, imgH, undefined, 'FAST');
+        doc.addImage(suiteReportUrl, suiteFormat, imgX, currentY + 2, imgW, imgH, undefined, 'FAST');
         doc.setFont('courier', 'normal');
         doc.setFontSize(5);
         doc.setTextColor(71, 85, 105);
-        doc.text('report.html', sx + 4, currentY + imgH + 3);
+        doc.text(`${resultsFolder}/report.html`, sx + 4, currentY + imgH + 3);
         currentY += imgH + 10;
-      }
     }
 
     const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;

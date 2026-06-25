@@ -23,6 +23,8 @@ model Execution {
   skipped     Int        @default(0)
   status      String
   resultsPath String     @map("results_path")
+  resultsFolder String?  @map("results_folder")
+  reportScreenshotPath String? @map("report_screenshot_path")
   createdAt   DateTime   @default(now()) @map("created_at")
   testCases   TestCase[]
 
@@ -37,6 +39,8 @@ model TestCase {
   category    String
   status      String
   durationS   Float     @map("duration_s")
+  robotTestId String?   @map("robot_test_id")
+  reportScreenshotPath String? @map("report_screenshot_path")
   execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
   steps       Step[]
 
@@ -51,6 +55,7 @@ model Step {
   stepType   String   @map("step_type")
   text       String
   status     String
+  screenshotPath String? @map("screenshot_path")
   testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
 
   @@index([testCaseId])

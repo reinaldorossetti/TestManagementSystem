@@ -31,6 +31,8 @@ export function toDbExecution(row: PrismaExecution): DbExecution {
     failed: row.failed,
     status: row.status as DbExecution['status'],
     results_path: row.resultsPath,
+    results_folder: row.resultsFolder ?? undefined,
+    report_screenshot_path: row.reportScreenshotPath ?? undefined,
   };
 }
 
@@ -42,6 +44,8 @@ export function toDbTestCase(row: PrismaTestCase): DbTestCase {
     category: row.category,
     status: row.status as DbTestCase['status'],
     duration_s: row.durationS,
+    robot_test_id: row.robotTestId ?? undefined,
+    report_screenshot_path: row.reportScreenshotPath ?? undefined,
   };
 }
 
@@ -52,6 +56,7 @@ export function toDbStep(row: PrismaStep): DbStepLog {
     step_type: row.stepType as DbStepLog['step_type'],
     text: row.text,
     status: row.status as DbStepLog['status'],
+    screenshot_path: row.screenshotPath ?? undefined,
   };
 }
 

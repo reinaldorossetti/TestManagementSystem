@@ -43,6 +43,8 @@ export async function insertRun(payload: PersistRunInput, client: DbClient): Pro
       skipped: execution.skipped ?? 0,
       status: execution.status,
       resultsPath: execution.results_path,
+      resultsFolder: execution.results_folder ?? null,
+      reportScreenshotPath: execution.report_screenshot_path ?? null,
     },
   });
 
@@ -55,6 +57,8 @@ export async function insertRun(payload: PersistRunInput, client: DbClient): Pro
         category: testCase.category,
         status: testCase.status,
         durationS: testCase.duration_s,
+        robotTestId: testCase.robot_test_id ?? null,
+        reportScreenshotPath: testCase.report_screenshot_path ?? null,
       })),
     });
   }
@@ -67,6 +71,7 @@ export async function insertRun(payload: PersistRunInput, client: DbClient): Pro
         stepType: step.step_type,
         text: step.text,
         status: step.status,
+        screenshotPath: step.screenshot_path ?? null,
       })),
     });
   }

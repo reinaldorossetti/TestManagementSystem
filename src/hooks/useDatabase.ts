@@ -6,6 +6,11 @@ import { INITIAL_DB_SEED, type VirtualDatabase } from '@/src/utils/sqliteEngine'
 import { apiClient, type SqlQueryResult } from '@/src/lib/api/client';
 
 const SYNC_CHANNEL = 'tms_db_sync';
+
+const createTabId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const PERSIST_DEBOUNCE_MS = 400;
 
 export interface UseDatabaseResult {
@@ -31,6 +36,7 @@ export function useDatabase(): UseDatabaseResult {
   // When true, the next persist effect run is a remote/load echo and must not
   // be written back to the server (prevents save loops).
   const skipPersistRef = useRef(true);
+  const tabIdRef = useRef(createTabId());
   const channelRef = useRef<BroadcastChannel | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -57,7 +63,13 @@ export function useDatabase(): UseDatabaseResult {
     const channel = new BroadcastChannel(SYNC_CHANNEL);
     channelRef.current = channel;
     channel.onmessage = (event) => {
-      if (event.data !== 'changed') return;
+      const payload = event.data as { type?: string; source?: string } | string;
+      if (typeof payload === 'string') {
+        if (payload !== 'changed') return;
+      } else if (payload?.type !== 'changed') {
+        return;
+      }
+      if (typeof payload === 'object' && payload.source === tabIdRef.current) return;
       apiClient
         .getDatabase()
         .then((db) => {
@@ -82,7 +94,7 @@ export function useDatabase(): UseDatabaseResult {
     persistTimerRef.current = setTimeout(() => {
       apiClient
         .replaceDatabase(sqliteDb)
-        .then(() => channelRef.current?.postMessage('changed'))
+        .then(() => channelRef.current?.postMessage({ type: 'changed', source: tabIdRef.current }))
         .catch((error) => console.error('Falha ao persistir banco de dados:', error));
     }, PERSIST_DEBOUNCE_MS);
     return () => {
@@ -94,7 +106,7 @@ export function useDatabase(): UseDatabaseResult {
     const db = await apiClient.resetDatabase();
     skipPersistRef.current = true;
     setSqliteDbState(db);
-    channelRef.current?.postMessage('changed');
+    channelRef.current?.postMessage({ type: 'changed', source: tabIdRef.current });
     return db;
   }, []);
 
@@ -102,7 +114,7 @@ export function useDatabase(): UseDatabaseResult {
     const db = await apiClient.clearExecutionHistory();
     skipPersistRef.current = true;
     setSqliteDbState(db);
-    channelRef.current?.postMessage('changed');
+    channelRef.current?.postMessage({ type: 'changed', source: tabIdRef.current });
     return db;
   }, []);
 

@@ -19,6 +19,6 @@ export function resolveOutputXmlPath(runFolder: string): string {
 /** Extrai o nome da pasta em `results/` a partir do caminho do output.xml. */
 export function extractResultsFolderFromPath(resultsPath: string): string | null {
   const normalized = resultsPath.replace(/\\/g, '/');
-  const match = normalized.match(/\/results\/([^/]+)\//i);
+  const match = normalized.match(/(?:^|\/)results\/([^/]+)(?:\/|$)/i);
   return match?.[1] ?? null;
 }
