@@ -1197,16 +1197,74 @@ export const handleExportExecutionReportToPDF = async (
         }
 
         // ---- Evidências visuais (passos + report Robot por cenário) ----
-        const evidenceSteps = caseSteps.filter(
-          (s) => resolveStepScreenshotPath(s, tc, evidence) !== undefined,
-        );
         const testReportPath = resolveTestReportPath(tc, evidence, testCaseIndexById.get(tc.id));
-        const hasScenarioReport = Boolean(testReportPath);
-        if (evidenceSteps.length > 0 || hasScenarioReport) {
-          checkPageBreak(36);
+
+        type LoadedStepEvidence = { st: DbStepLog; dataUrl: string; imgFormat: 'PNG' | 'JPEG' };
+        const loadedStepEvidence: LoadedStepEvidence[] = [];
+        for (const st of caseSteps) {
+          const shotPath = resolveStepScreenshotPath(st, tc, evidence);
+          if (!shotPath) continue;
+          const dataUrl = await loadScreenshotDataUrl(resultsFolder, shotPath);
+          if (!dataUrl) continue;
+          loadedStepEvidence.push({ st, dataUrl, imgFormat: imageFormatFromDataUrl(dataUrl) });
+        }
+
+        let reportDataUrl: string | null = null;
+        let reportFormat: 'PNG' | 'JPEG' = 'PNG';
+        let reportNatW = 1366;
+        let reportNatH = 768;
+        if (testReportPath) {
+          const url = await loadScreenshotDataUrl(resultsFolder, testReportPath);
+          if (url) {
+            reportDataUrl = url;
+            reportFormat = imageFormatFromDataUrl(url);
+            const dims = await probeImageSize(url);
+            reportNatW = dims.width;
+            reportNatH = dims.height;
+          }
+        }
+
+        if (loadedStepEvidence.length === 0 && !reportDataUrl) {
+          // sem evidências neste cenário
+        } else {
           const sectionX = marginX + 4;
           const sectionW = contentWidth - 8;
           const headerH = 16;
+          const tilePad = 4;
+          const tileW = sectionW - 12;
+          const blockGap = 4;
+
+          const measureStepTile = async (item: LoadedStepEvidence) => {
+            const { width: natW, height: natH } = await probeImageSize(item.dataUrl);
+            const maxImgH = 52;
+            const scale = Math.min((tileW - tilePad * 2) / natW, maxImgH / natH, 1);
+            return {
+              imgW: natW * scale,
+              imgH: natH * scale,
+              tileH: natH * scale + 16,
+            };
+          };
+
+          const stepTiles = await Promise.all(
+            loadedStepEvidence.map(async (item) => ({
+              item,
+              ...(await measureStepTile(item)),
+            })),
+          );
+
+          let reportCardH = 0;
+          let reportImgW = 0;
+          let reportImgH = 0;
+          if (reportDataUrl) {
+            const maxImgH = 72;
+            const scale = Math.min((tileW - 8) / reportNatW, maxImgH / reportNatH, 1);
+            reportImgW = reportNatW * scale;
+            reportImgH = reportNatH * scale;
+            reportCardH = reportImgH + 18;
+          }
+
+          const firstBlockH = stepTiles[0]?.tileH ?? reportCardH;
+          checkPageBreak(headerH + blockGap + firstBlockH + blockGap);
 
           doc.setFillColor(10, 14, 28);
           doc.setDrawColor(255, 102, 0);
@@ -1234,123 +1292,93 @@ export const handleExportExecutionReportToPDF = async (
           doc.setFont('courier', 'normal');
           doc.setFontSize(5);
           doc.setTextColor(71, 85, 105);
-          doc.text(`results/${resultsFolder}`, sectionX + sectionW - 4 - doc.getTextWidth(`results/${resultsFolder}`), currentY + 5.5);
+          doc.text(
+            `results/${resultsFolder}`,
+            sectionX + sectionW - 4 - doc.getTextWidth(`results/${resultsFolder}`),
+            currentY + 5.5,
+          );
 
           drawStatusIcon(pageWidth - marginX - 10, currentY + 8, 2, tc.status);
-          currentY += headerH + 4;
+          currentY += headerH + blockGap;
 
-          // Grid 2 colunas — screenshots dos passos (WHEN / THEN)
-          if (evidenceSteps.length > 0) {
-            const gap = 3;
-            const tileW = (sectionW - 12 - gap) / 2;
-            const tilePad = 4;
-            let col = 0;
-            let rowY = currentY;
-            let rowMaxH = 0;
+          // Coluna única — um card abaixo do outro; quebra de página reinicia no topo (currentY = 15)
+          for (const { item, imgW, imgH, tileH } of stepTiles) {
+            const { st, dataUrl, imgFormat } = item;
+            checkPageBreak(tileH + blockGap);
+            const tileY = currentY;
+            const tileX = sectionX + 6;
 
-            for (const st of evidenceSteps) {
-              const shotPath = resolveStepScreenshotPath(st, tc, evidence);
-              if (!shotPath) continue;
-              const dataUrl = await loadScreenshotDataUrl(resultsFolder, shotPath);
-              if (!dataUrl) continue;
-              const imgFormat = imageFormatFromDataUrl(dataUrl);
+            doc.setFillColor(6, 9, 20);
+            doc.setDrawColor(30, 41, 59);
+            doc.setLineWidth(0.25);
+            doc.roundedRect(tileX, tileY, tileW, tileH, 2, 2, 'FD');
 
-              const { width: natW, height: natH } = await probeImageSize(dataUrl);
-              const maxImgH = 48;
-              const scale = Math.min((tileW - tilePad * 2) / natW, maxImgH / natH, 1);
-              const imgW = natW * scale;
-              const imgH = natH * scale;
-              const tileH = imgH + 16;
-              const tileX = sectionX + 6 + col * (tileW + gap);
+            const kwEv = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(5.5);
+            const evKw = st.step_type.toUpperCase();
+            const evKwW = doc.getTextWidth(evKw) + 3.5;
+            doc.setFillColor(kwEv.bg[0], kwEv.bg[1], kwEv.bg[2]);
+            doc.roundedRect(tileX + tilePad, tileY + 3, evKwW, 3.8, 0.6, 0.6, 'F');
+            doc.setTextColor(kwEv.fg[0], kwEv.fg[1], kwEv.fg[2]);
+            doc.text(evKw, tileX + tilePad + 1.5, tileY + 5.6);
 
-              if (col === 0) checkPageBreak(tileH + 6);
+            drawStatusIcon(tileX + tileW - tilePad - 2, tileY + 5.2, 1.2, st.status);
 
-              doc.setFillColor(6, 9, 20);
-              doc.setDrawColor(30, 41, 59);
-              doc.setLineWidth(0.25);
-              doc.roundedRect(tileX, rowY, tileW, tileH, 2, 2, 'FD');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(5.8);
+            doc.setTextColor(148, 163, 184);
+            const cap = (doc.splitTextToSize(st.text, tileW - tilePad * 2) as string[])[0] || st.text;
+            doc.text(cap, tileX + tilePad, tileY + 9.5);
 
-              const kwEv = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(5.5);
-              const evKw = st.step_type.toUpperCase();
-              const evKwW = doc.getTextWidth(evKw) + 3.5;
-              doc.setFillColor(kwEv.bg[0], kwEv.bg[1], kwEv.bg[2]);
-              doc.roundedRect(tileX + tilePad, rowY + 3, evKwW, 3.8, 0.6, 0.6, 'F');
-              doc.setTextColor(kwEv.fg[0], kwEv.fg[1], kwEv.fg[2]);
-              doc.text(evKw, tileX + tilePad + 1.5, rowY + 5.6);
+            const imgX = tileX + (tileW - imgW) / 2;
+            const imgY = tileY + 11;
+            doc.setDrawColor(255, 102, 0);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(imgX - 0.4, imgY - 0.4, imgW + 0.8, imgH + 0.8, 0.6, 0.6, 'S');
+            doc.addImage(dataUrl, imgFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
 
-              drawStatusIcon(tileX + tileW - tilePad - 2, rowY + 5.2, 1.2, st.status);
-
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(5.8);
-              doc.setTextColor(148, 163, 184);
-              const cap = (doc.splitTextToSize(st.text, tileW - tilePad * 2) as string[])[0] || st.text;
-              doc.text(cap, tileX + tilePad, rowY + 9.5);
-
-              const imgX = tileX + (tileW - imgW) / 2;
-              const imgY = rowY + 11;
-              doc.setDrawColor(255, 102, 0);
-              doc.setLineWidth(0.3);
-              doc.roundedRect(imgX - 0.4, imgY - 0.4, imgW + 0.8, imgH + 0.8, 0.6, 0.6, 'S');
-              doc.addImage(dataUrl, imgFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
-
-              rowMaxH = Math.max(rowMaxH, tileH);
-              col += 1;
-              if (col >= 2) {
-                col = 0;
-                currentY = rowY + rowMaxH + gap;
-                rowY = currentY;
-                rowMaxH = 0;
-              }
-            }
-            if (col > 0) currentY = rowY + rowMaxH + 4;
-            else currentY += 2;
+            currentY = tileY + tileH + blockGap;
           }
 
           // Report Robot — trecho do log.html deste cenário
-          if (hasScenarioReport && testReportPath) {
-            const reportUrl = await loadScreenshotDataUrl(resultsFolder, testReportPath);
-            if (reportUrl) {
-              const reportFormat = imageFormatFromDataUrl(reportUrl);
-              const { width: natW, height: natH } = await probeImageSize(reportUrl);
-              const cardX = sectionX + 6;
-              const cardW = sectionW - 12;
-              const maxImgH = 72;
-              const scale = Math.min((cardW - 8) / natW, maxImgH / natH, 1);
-              const imgW = natW * scale;
-              const imgH = natH * scale;
-              const cardH = imgH + 18;
-              checkPageBreak(cardH + 4);
+          if (reportDataUrl) {
+            checkPageBreak(reportCardH + blockGap);
+            const cardX = sectionX + 6;
+            const cardW = tileW;
+            const cardY = currentY;
 
-              doc.setFillColor(8, 15, 30);
-              doc.setDrawColor(56, 189, 248);
-              doc.setLineWidth(0.35);
-              doc.roundedRect(cardX, currentY, cardW, cardH, 2, 2, 'FD');
-              doc.setFillColor(56, 189, 248);
-              doc.roundedRect(cardX, currentY, 1.2, cardH, 2, 2, 'F');
+            doc.setFillColor(8, 15, 30);
+            doc.setDrawColor(56, 189, 248);
+            doc.setLineWidth(0.35);
+            doc.roundedRect(cardX, cardY, cardW, reportCardH, 2, 2, 'FD');
+            doc.setFillColor(56, 189, 248);
+            doc.roundedRect(cardX, cardY, 1.2, reportCardH, 2, 2, 'F');
 
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(6);
-              doc.setTextColor(56, 189, 248);
-              doc.text(t('ROBOT FRAMEWORK — LOG DO CENÁRIO', 'ROBOT FRAMEWORK — SCENARIO LOG'), cardX + 4, currentY + 5);
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(5.5);
-              doc.setTextColor(100, 116, 139);
-              doc.text(
-                t(`Referência: ${tc.id} · ${tc.name}`, `Reference: ${tc.id} · ${tc.name}`),
-                cardX + 4,
-                currentY + 9,
-              );
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6);
+            doc.setTextColor(56, 189, 248);
+            doc.text(
+              t('ROBOT FRAMEWORK — LOG DO CENÁRIO', 'ROBOT FRAMEWORK — SCENARIO LOG'),
+              cardX + 4,
+              cardY + 5,
+            );
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(5.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(
+              t(`Referência: ${tc.id} · ${tc.name}`, `Reference: ${tc.id} · ${tc.name}`),
+              cardX + 4,
+              cardY + 9,
+            );
 
-              const imgX = cardX + (cardW - imgW) / 2;
-              const imgY = currentY + 11;
-              doc.setDrawColor(56, 189, 248);
-              doc.setLineWidth(0.35);
-              doc.roundedRect(imgX - 0.5, imgY - 0.5, imgW + 1, imgH + 1, 0.8, 0.8, 'S');
-              doc.addImage(reportUrl, reportFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
-              currentY += cardH + 5;
-            }
+            const imgX = cardX + (cardW - reportImgW) / 2;
+            const imgY = cardY + 11;
+            doc.setDrawColor(56, 189, 248);
+            doc.setLineWidth(0.35);
+            doc.roundedRect(imgX - 0.5, imgY - 0.5, reportImgW + 1, reportImgH + 1, 0.8, 0.8, 'S');
+            doc.addImage(reportDataUrl, reportFormat, imgX, imgY, reportImgW, reportImgH, undefined, 'FAST');
+            currentY = cardY + reportCardH + blockGap;
           }
         }
 
@@ -1366,39 +1394,43 @@ export const handleExportExecutionReportToPDF = async (
       exec.report_screenshot_path ?? evidence?.suiteReport ?? 'artifacts/robot-report.png';
     const suiteReportUrl = await loadScreenshotDataUrl(resultsFolder, suiteReportPath);
     if (suiteReportUrl) {
-        const suiteFormat = imageFormatFromDataUrl(suiteReportUrl);
-        checkPageBreak(40);
-        const sx = marginX + 2;
-        const sw = contentWidth - 4;
-        const hdrH = 10;
-        doc.setFillColor(8, 12, 24);
-        doc.setDrawColor(16, 185, 129);
-        doc.setLineWidth(0.4);
-        doc.roundedRect(sx, currentY, sw, hdrH, 2, 2, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.setTextColor(16, 185, 129);
-        doc.text(t('RELATÓRIO ROBOT FRAMEWORK — SUÍTE COMPLETA', 'ROBOT FRAMEWORK REPORT — FULL SUITE'), sx + 4, currentY + 6.5);
-        currentY += hdrH + 3;
+      const suiteFormat = imageFormatFromDataUrl(suiteReportUrl);
+      const sx = marginX + 2;
+      const sw = contentWidth - 4;
+      const hdrH = 10;
+      const { width: natW, height: natH } = await probeImageSize(suiteReportUrl);
+      const maxH = 110;
+      const scale = Math.min((sw - 6) / natW, maxH / natH, 1);
+      const imgW = natW * scale;
+      const imgH = natH * scale;
+      const blockH = hdrH + 3 + imgH + 10;
+      checkPageBreak(blockH);
 
-        const { width: natW, height: natH } = await probeImageSize(suiteReportUrl);
-        const maxH = 110;
-        const scale = Math.min((sw - 6) / natW, maxH / natH, 1);
-        const imgW = natW * scale;
-        const imgH = natH * scale;
-        checkPageBreak(imgH + 8);
+      doc.setFillColor(8, 12, 24);
+      doc.setDrawColor(16, 185, 129);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(sx, currentY, sw, hdrH, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(16, 185, 129);
+      doc.text(
+        t('RELATÓRIO ROBOT FRAMEWORK — SUÍTE COMPLETA', 'ROBOT FRAMEWORK REPORT — FULL SUITE'),
+        sx + 4,
+        currentY + 6.5,
+      );
+      const imgBlockY = currentY + hdrH + 3;
 
-        doc.setFillColor(4, 8, 18);
-        doc.setDrawColor(16, 185, 129);
-        doc.setLineWidth(0.35);
-        doc.roundedRect(sx, currentY, sw, imgH + 4, 2, 2, 'FD');
-        const imgX = sx + (sw - imgW) / 2;
-        doc.addImage(suiteReportUrl, suiteFormat, imgX, currentY + 2, imgW, imgH, undefined, 'FAST');
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(5);
-        doc.setTextColor(71, 85, 105);
-        doc.text(`${resultsFolder}/report.html`, sx + 4, currentY + imgH + 3);
-        currentY += imgH + 10;
+      doc.setFillColor(4, 8, 18);
+      doc.setDrawColor(16, 185, 129);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(sx, imgBlockY, sw, imgH + 4, 2, 2, 'FD');
+      const imgX = sx + (sw - imgW) / 2;
+      doc.addImage(suiteReportUrl, suiteFormat, imgX, imgBlockY + 2, imgW, imgH, undefined, 'FAST');
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`${resultsFolder}/report.html`, sx + 4, imgBlockY + imgH + 3);
+      currentY = imgBlockY + imgH + 10;
     }
 
     const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
