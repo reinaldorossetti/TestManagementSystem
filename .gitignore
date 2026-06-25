@@ -27,3 +27,4 @@ prisma/*.db-journal
 /blob-report/
 /playwright/.cache/
 /.playwright-mcp/
+*.pdf
