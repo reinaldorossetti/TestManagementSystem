@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolveOutputXmlPath } from '@/src/server/robot/resultsPaths';
 import { parseRobotOutputXml } from '@/src/server/robot/outputXmlParser';
+import { captureRobotReportImages } from '@/src/server/robot/reportCapture';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,20 @@ export async function POST(req: Request): Promise<Response> {
       resultsPath: xmlPath,
       fallbackTimestamp: body.timestamp ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
     });
+
+    const captures = await captureRobotReportImages(
+      runId,
+      parsed.testCases.map((tc) => ({ id: tc.id, robotTestId: tc.robot_test_id })),
+    );
+
+    if (captures.suiteReportPath) {
+      parsed.execution.report_screenshot_path = captures.suiteReportPath;
+    }
+    for (const tc of parsed.testCases) {
+      const reportPath = captures.testReportPaths[tc.id];
+      if (reportPath) tc.report_screenshot_path = reportPath;
+    }
+
     return Response.json(parsed, { status: 200 });
   } catch (err) {
     return Response.json(

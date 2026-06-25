@@ -188,6 +188,7 @@ export function parseRobotOutputXml(xml: string, options: ParseOptions): ParsedR
       category,
       status,
       duration_s: Number(duration.toFixed(3)),
+      robot_test_id: (test['@_id'] as string) || undefined,
     });
 
     const stepKws = asArray<XmlNode>(test.kw as XmlNode[]).filter(isExecutableStep);
@@ -226,6 +227,7 @@ export function parseRobotOutputXml(xml: string, options: ParseOptions): ParsedR
     failed,
     status: failed > 0 ? 'FAIL' : 'PASS',
     results_path: options.resultsPath,
+    results_folder: options.runId,
   };
 
   // `skipped` é derivável (total - passed - failed) e o schema aceita opcional;

@@ -53,6 +53,9 @@ export const apiClient = {
 
   resetDatabase: () => request<VirtualDatabase>('/api/database/reset', { method: 'POST' }),
 
+  clearExecutionHistory: () =>
+    request<VirtualDatabase>('/api/database/clear-executions', { method: 'POST' }),
+
   runSql: (query: string) =>
     request<SqlQueryResult>('/api/sql', {
       method: 'POST',

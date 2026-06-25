@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Square, Eraser, TerminalSquare } from 'lucide-react';
+import { Play, Square, Eraser, TerminalSquare, Trash2 } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { createTranslator, type Language } from '../utils/i18n';
+import { ROBOT_RUN_ALL_COMMAND } from '../utils/robotCommands';
+import { buildRunFolderName } from '../utils/robotResultsFolder';
 import type { DbExecution, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
 
 export interface ParsedRunResult {
@@ -20,9 +22,11 @@ interface LiveTerminalProps {
   initialCommand?: string;
   /** Chamado quando uma execução real do Robot é parseada do output.xml. */
   onPersisted?: (parsed: ParsedRunResult) => void;
+  /** Zera executions / test_cases / steps no banco. */
+  onClearExecutions?: () => void;
 }
 
-const DEFAULT_COMMAND = 'python -m robot --version';
+const DEFAULT_COMMAND = ROBOT_RUN_ALL_COMMAND;
 
 const formatTimestamp = (): string => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -33,7 +37,7 @@ const formatTimestamp = (): string => new Date().toISOString().slice(0, 19).repl
  * Versão simples (Fase 0): somente leitura no terminal; o comando é enviado
  * pelo campo de entrada acima. Sem Docker/sandbox — uso local de teste.
  */
-export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: LiveTerminalProps) {
+export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onClearExecutions }: LiveTerminalProps) {
   const t = createTranslator(language);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -103,17 +107,19 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const runCommand = useCallback(async () => {
+  const runCommand = useCallback(async (overrideCmd?: string) => {
     const term = termRef.current;
-    const cmd = command.trim();
+    const cmd = (overrideCmd ?? command).trim();
     if (!term || !cmd || isRunning) return;
+
+    if (overrideCmd) setCommand(overrideCmd);
 
     const controller = new AbortController();
     abortRef.current = controller;
     setIsRunning(true);
 
-    const runId = `RUN-${Date.now()}`;
     const timestamp = formatTimestamp();
+    const runFolder = buildRunFolderName(timestamp);
     let aborted = false;
 
     term.writeln(`\x1b[1;33m$ ${cmd}\x1b[0m`);
@@ -122,7 +128,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
       const response = await fetch('/api/terminal/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd, persist, runId }),
+        body: JSON.stringify({ command: cmd, persist, runId: runFolder }),
         signal: controller.signal,
       });
 
@@ -157,7 +163,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
         const res = await fetch('/api/terminal/output', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ runId, command: cmd, timestamp }),
+          body: JSON.stringify({ runId: runFolder, command: cmd, timestamp }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -168,6 +174,11 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
             `\x1b[1;32m[TMS] Execução registrada: ${parsed.execution.id} — ` +
               `${parsed.execution.total_tests} testes (${parsed.execution.passed} ok, ${parsed.execution.failed} falhas).\x1b[0m`,
           );
+          if (parsed.execution.report_screenshot_path) {
+            term.writeln(
+              `\x1b[90m[TMS] Report Robot capturado (report.html + log por cenário) para o PDF.\x1b[0m`,
+            );
+          }
           onPersisted?.(parsed);
         }
       } catch (err) {
@@ -200,6 +211,38 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
         )}
       </div>
 
+      {/* Quick actions */}
+      <div className="bg-slate-950/40 px-4 py-2.5 border-b border-slate-800 flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={() => runCommand(ROBOT_RUN_ALL_COMMAND)}
+          className="flex items-center gap-1.5 bg-[#FF6600]/10 hover:bg-[#FF6600]/20 text-[#FF6600] font-black text-[10px] uppercase tracking-wide px-3 py-1.5 rounded-lg border border-[#FF6600]/30 hover:border-[#FF6600] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          title={t(
+            'Executa todas as suítes Robot em robot-sample/ (login_tests + tms)',
+            'Runs all Robot suites in robot-sample/ (login_tests + tms)',
+          )}
+        >
+          <Play className="w-3 h-3 fill-current" />
+          {t('Executar Todos os Testes', 'Run All Tests')}
+        </button>
+        <span className="text-[10px] font-mono text-slate-500 truncate max-w-full">
+          {ROBOT_RUN_ALL_COMMAND}
+        </span>
+        {onClearExecutions && (
+          <button
+            type="button"
+            disabled={isRunning}
+            onClick={onClearExecutions}
+            className="ml-auto flex items-center gap-1.5 text-slate-400 hover:text-rose-400 font-bold text-[10px] uppercase px-2.5 py-1.5 rounded-lg border border-slate-800 hover:border-rose-500/40 transition-all cursor-pointer disabled:opacity-50"
+            title={t('Zerar histórico de execuções', 'Clear execution history')}
+          >
+            <Trash2 className="w-3 h-3" />
+            {t('Zerar Execuções', 'Clear Runs')}
+          </button>
+        )}
+      </div>
+
       {/* Command bar */}
       <div className="bg-slate-950/60 px-4 py-3 border-b border-slate-800 flex items-center gap-2 flex-wrap">
         <span className="text-[#FF6600] font-mono font-black text-xs select-none">$</span>
@@ -208,7 +251,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') runCommand();
+            if (e.key === 'Enter') void runCommand();
           }}
           disabled={isRunning}
           placeholder={t('Digite o comando e pressione Enter…', 'Type the command and press Enter…')}
@@ -218,7 +261,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted }: L
         {!isRunning ? (
           <button
             type="button"
-            onClick={runCommand}
+            onClick={() => runCommand()}
             className="flex items-center gap-1.5 bg-[#FF6600] hover:bg-[#FF6600]/90 text-white font-black text-xs px-4 py-1.5 rounded-lg active:scale-95 transition-all cursor-pointer"
             title={t('Executar comando', 'Run command')}
           >

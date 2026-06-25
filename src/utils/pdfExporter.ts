@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { DbTestCaseSphere, DbExecution, DbTestCase, DbStepLog } from './sqliteEngine';
+import { resolveResultsFolderFromExecution } from './robotResultsFolder';
 import {
   getSeverityLevel,
   getCriticalityLevel,
@@ -68,12 +69,13 @@ const deriveTargetSpec = (command: string, t: (pt: string, en: string) => string
 };
 
 /** Carrega screenshot do disco (via API) como data URL para embed no jsPDF. */
-const loadScreenshotDataUrl = async (runId: string, screenshotPath: string): Promise<string | null> => {
+const loadScreenshotDataUrl = async (resultsFolder: string, screenshotPath: string): Promise<string | null> => {
   try {
-    const params = new URLSearchParams({ runId, path: screenshotPath });
+    const params = new URLSearchParams({ folder: resultsFolder, path: screenshotPath });
     const res = await fetch(`/api/terminal/screenshot?${params.toString()}`);
     if (!res.ok) return null;
     const blob = await res.blob();
+    if (!blob.size) return null;
     return await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
@@ -85,6 +87,69 @@ const loadScreenshotDataUrl = async (runId: string, screenshotPath: string): Pro
   }
 };
 
+const imageFormatFromDataUrl = (dataUrl: string): 'PNG' | 'JPEG' =>
+  dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg') ? 'JPEG' : 'PNG';
+
+interface EvidenceManifest {
+  folder: string;
+  browserScreenshots: string[];
+  testReports: Record<string, string>;
+  suiteReport?: string;
+}
+
+const LOGIN_USERS =
+  /(standard_user|locked_out_user|problem_user|performance_glitch_user|error_user|visual_user)/;
+
+const loadEvidenceManifest = async (resultsFolder: string): Promise<EvidenceManifest | null> => {
+  try {
+    const res = await fetch(`/api/terminal/evidence?folder=${encodeURIComponent(resultsFolder)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as EvidenceManifest;
+  } catch {
+    return null;
+  }
+};
+
+const userFromTestName = (name: string): string | null => {
+  const m = name.match(LOGIN_USERS);
+  return m?.[1] ?? null;
+};
+
+/** Resolve caminho da imagem do passo (banco ou disco em results/<folder>/). */
+const resolveStepScreenshotPath = (
+  st: DbStepLog,
+  tc: DbTestCase,
+  manifest: EvidenceManifest | null,
+): string | undefined => {
+  if (st.screenshot_path) return st.screenshot_path;
+  if (!manifest?.browserScreenshots.length) return undefined;
+  const shots = manifest.browserScreenshots;
+  const user = userFromTestName(tc.name);
+  const text = st.text.toLowerCase();
+
+  if (st.step_type === 'WHEN' && user) {
+    return shots.find((s) => s.includes(`when-${user}`));
+  }
+  if (text.includes('bloqueado') || tc.name.includes('locked_out')) {
+    return shots.find((s) => s.includes('then-bloqueado'));
+  }
+  if (text.includes('produtos') || text.includes('area de produtos')) {
+    return shots.find((s) => s.includes('then-produtos'));
+  }
+  if (text.includes('usuario autenticado') || text.includes('nome do usuario')) {
+    if (user) return shots.find((s) => s.includes(`then-usuario-${user}`));
+  }
+  return undefined;
+};
+
+const resolveTestReportPath = (tc: DbTestCase, manifest: EvidenceManifest | null): string | undefined => {
+  if (tc.report_screenshot_path) return tc.report_screenshot_path;
+  if (tc.robot_test_id && manifest?.testReports[tc.robot_test_id]) {
+    return manifest.testReports[tc.robot_test_id];
+  }
+  return undefined;
+};
+
 const probeImageSize = (dataUrl: string): Promise<{ width: number; height: number }> =>
   new Promise((resolve) => {
     const img = new Image();
@@ -92,6 +157,7 @@ const probeImageSize = (dataUrl: string): Promise<{ width: number; height: numbe
     img.onerror = () => resolve({ width: 1366, height: 768 });
     img.src = dataUrl;
   });
+
 
 const SEVERITY_COLORS: Record<Severity, { bg: RGB; fg: RGB }> = {
   Critical: { bg: [30, 58, 138], fg: [191, 219, 254] },
@@ -568,6 +634,9 @@ export const handleExportExecutionReportToPDF = async (
 ) => {
   try {
     const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
+    const resultsFolder = resolveResultsFolderFromExecution(exec);
+    const evidence = await loadEvidenceManifest(resultsFolder);
+
     const doc = instantiateDoc();
 
     const pageWidth = 210;
@@ -1094,85 +1163,156 @@ export const handleExportExecutionReportToPDF = async (
           currentY += 1;
         }
 
-        // ---- Evidências visuais (screenshots When/Then) ----
-        const evidenceSteps = caseSteps.filter((s) => s.screenshot_path);
-        if (evidenceSteps.length > 0) {
-          checkPageBreak(28);
-          const evHeaderH = 12;
-          doc.setFillColor(12, 18, 32);
+        // ---- Evidências visuais (passos + report Robot por cenário) ----
+        const evidenceSteps = caseSteps.filter(
+          (s) => resolveStepScreenshotPath(s, tc, evidence) !== undefined,
+        );
+        const testReportPath = resolveTestReportPath(tc, evidence);
+        const hasScenarioReport = Boolean(testReportPath);
+        if (evidenceSteps.length > 0 || hasScenarioReport) {
+          checkPageBreak(36);
+          const sectionX = marginX + 4;
+          const sectionW = contentWidth - 8;
+          const headerH = 16;
+
+          doc.setFillColor(10, 14, 28);
           doc.setDrawColor(255, 102, 0);
-          doc.setLineWidth(0.35);
-          doc.roundedRect(marginX + 4, currentY, contentWidth - 8, evHeaderH, 2, 2, 'FD');
+          doc.setLineWidth(0.4);
+          doc.roundedRect(sectionX, currentY, sectionW, headerH, 2.5, 2.5, 'FD');
           doc.setFillColor(255, 102, 0);
-          doc.rect(marginX + 4, currentY, 1.4, evHeaderH, 'F');
+          doc.roundedRect(sectionX, currentY, 2, headerH, 2.5, 0, 'F');
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.setTextColor(255, 102, 0);
+          doc.text(t('EVIDÊNCIAS DO CENÁRIO', 'SCENARIO EVIDENCE'), sectionX + 6, currentY + 5.5);
+
+          doc.setFont('courier', 'bold');
+          doc.setFontSize(6);
+          doc.setTextColor(148, 163, 184);
+          doc.text(tc.id, sectionX + 6, currentY + 10.5);
+
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(6.5);
-          doc.setTextColor(255, 102, 0);
-          doc.text(t('EVIDÊNCIAS VISUAIS', 'VISUAL EVIDENCE'), marginX + 8, currentY + 4.5);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(6);
-          doc.setTextColor(100, 116, 139);
-          doc.text(`${t('Cenário', 'Scenario')}:`, marginX + 8, currentY + 9);
-          doc.setFont('helvetica', 'bold');
           doc.setTextColor(226, 232, 240);
-          const evName = (doc.splitTextToSize(tc.name, contentWidth - 38) as string[])[0] || tc.name;
-          doc.text(evName, marginX + 22, currentY + 9);
-          currentY += evHeaderH + 5;
+          const scenTitle = (doc.splitTextToSize(tc.name, sectionW - 50) as string[])[0] || tc.name;
+          doc.text(scenTitle, sectionX + 6 + doc.getTextWidth(tc.id) + 4, currentY + 10.5);
 
-          for (const st of evidenceSteps) {
-            const dataUrl = await loadScreenshotDataUrl(exec.id, st.screenshot_path!);
-            if (!dataUrl) continue;
+          drawStatusIcon(pageWidth - marginX - 10, currentY + 8, 2, tc.status);
+          currentY += headerH + 4;
 
-            const { width: natW, height: natH } = await probeImageSize(dataUrl);
-            const maxImgW = contentWidth - 20;
-            const maxImgH = 62;
-            const scale = Math.min(maxImgW / natW, maxImgH / natH, 1);
-            const imgW = natW * scale;
-            const imgH = natH * scale;
-            const cardH = imgH + 14;
-            const cardX = marginX + 8;
+          // Grid 2 colunas — screenshots dos passos (WHEN / THEN)
+          if (evidenceSteps.length > 0) {
+            const gap = 3;
+            const tileW = (sectionW - 12 - gap) / 2;
+            const tilePad = 4;
+            let col = 0;
+            let rowY = currentY;
+            let rowMaxH = 0;
 
-            checkPageBreak(cardH + 6);
+            for (const st of evidenceSteps) {
+              const shotPath = resolveStepScreenshotPath(st, tc, evidence);
+              if (!shotPath) continue;
+              const dataUrl = await loadScreenshotDataUrl(resultsFolder, shotPath);
+              if (!dataUrl) continue;
+              const imgFormat = imageFormatFromDataUrl(dataUrl);
 
-            doc.setFillColor(8, 11, 22);
-            doc.setDrawColor(30, 41, 59);
-            doc.setLineWidth(0.25);
-            doc.roundedRect(cardX, currentY, contentWidth - 16, cardH, 2, 2, 'FD');
+              const { width: natW, height: natH } = await probeImageSize(dataUrl);
+              const maxImgH = 48;
+              const scale = Math.min((tileW - tilePad * 2) / natW, maxImgH / natH, 1);
+              const imgW = natW * scale;
+              const imgH = natH * scale;
+              const tileH = imgH + 16;
+              const tileX = sectionX + 6 + col * (tileW + gap);
 
-            const kwEv = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(5.5);
-            const evKw = st.step_type.toUpperCase();
-            const evKwW = doc.getTextWidth(evKw) + 3.5;
-            doc.setFillColor(kwEv.bg[0], kwEv.bg[1], kwEv.bg[2]);
-            doc.roundedRect(cardX + 4, currentY + 3, evKwW, 3.8, 0.6, 0.6, 'F');
-            doc.setTextColor(kwEv.fg[0], kwEv.fg[1], kwEv.fg[2]);
-            doc.text(evKw, cardX + 5.5, currentY + 5.6);
+              if (col === 0) checkPageBreak(tileH + 6);
 
-            drawStatusIcon(cardX + contentWidth - 28, currentY + 5.2, 1.3, st.status);
+              doc.setFillColor(6, 9, 20);
+              doc.setDrawColor(30, 41, 59);
+              doc.setLineWidth(0.25);
+              doc.roundedRect(tileX, rowY, tileW, tileH, 2, 2, 'FD');
 
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6.2);
-            doc.setTextColor(203, 213, 225);
-            const capLine = (doc.splitTextToSize(st.text, contentWidth - 48) as string[])[0] || st.text;
-            doc.text(capLine, cardX + 4 + evKwW + 2, currentY + 5.6);
+              const kwEv = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(5.5);
+              const evKw = st.step_type.toUpperCase();
+              const evKwW = doc.getTextWidth(evKw) + 3.5;
+              doc.setFillColor(kwEv.bg[0], kwEv.bg[1], kwEv.bg[2]);
+              doc.roundedRect(tileX + tilePad, rowY + 3, evKwW, 3.8, 0.6, 0.6, 'F');
+              doc.setTextColor(kwEv.fg[0], kwEv.fg[1], kwEv.fg[2]);
+              doc.text(evKw, tileX + tilePad + 1.5, rowY + 5.6);
 
-            const imgX = cardX + (contentWidth - 16 - imgW) / 2;
-            const imgY = currentY + 9;
-            doc.setDrawColor(255, 102, 0);
-            doc.setLineWidth(0.4);
-            doc.roundedRect(imgX - 0.5, imgY - 0.5, imgW + 1, imgH + 1, 1, 1, 'S');
-            doc.addImage(dataUrl, 'PNG', imgX, imgY, imgW, imgH, undefined, 'FAST');
+              drawStatusIcon(tileX + tileW - tilePad - 2, rowY + 5.2, 1.2, st.status);
 
-            doc.setFont('courier', 'normal');
-            doc.setFontSize(5);
-            doc.setTextColor(71, 85, 105);
-            const fileLabel = st.screenshot_path!.split('/').pop() || st.screenshot_path!;
-            doc.text(fileLabel, cardX + 4, currentY + cardH - 2);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(5.8);
+              doc.setTextColor(148, 163, 184);
+              const cap = (doc.splitTextToSize(st.text, tileW - tilePad * 2) as string[])[0] || st.text;
+              doc.text(cap, tileX + tilePad, rowY + 9.5);
 
-            currentY += cardH + 4;
+              const imgX = tileX + (tileW - imgW) / 2;
+              const imgY = rowY + 11;
+              doc.setDrawColor(255, 102, 0);
+              doc.setLineWidth(0.3);
+              doc.roundedRect(imgX - 0.4, imgY - 0.4, imgW + 0.8, imgH + 0.8, 0.6, 0.6, 'S');
+              doc.addImage(dataUrl, imgFormat, imgX, imgY, imgW, imgH, undefined, 'FAST');
+
+              rowMaxH = Math.max(rowMaxH, tileH);
+              col += 1;
+              if (col >= 2) {
+                col = 0;
+                currentY = rowY + rowMaxH + gap;
+                rowY = currentY;
+                rowMaxH = 0;
+              }
+            }
+            if (col > 0) currentY = rowY + rowMaxH + 4;
+            else currentY += 2;
           }
-          currentY += 2;
+
+          // Report Robot — trecho do log.html deste cenário
+          if (hasScenarioReport && tc.report_screenshot_path) {
+            const reportUrl = await loadScreenshotDataUrl(exec.id, tc.report_screenshot_path);
+            if (reportUrl) {
+              const { width: natW, height: natH } = await probeImageSize(reportUrl);
+              const cardX = sectionX + 6;
+              const cardW = sectionW - 12;
+              const maxImgH = 72;
+              const scale = Math.min((cardW - 8) / natW, maxImgH / natH, 1);
+              const imgW = natW * scale;
+              const imgH = natH * scale;
+              const cardH = imgH + 18;
+              checkPageBreak(cardH + 4);
+
+              doc.setFillColor(8, 15, 30);
+              doc.setDrawColor(56, 189, 248);
+              doc.setLineWidth(0.35);
+              doc.roundedRect(cardX, currentY, cardW, cardH, 2, 2, 'FD');
+              doc.setFillColor(56, 189, 248);
+              doc.roundedRect(cardX, currentY, 1.2, cardH, 2, 2, 'F');
+
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6);
+              doc.setTextColor(56, 189, 248);
+              doc.text(t('ROBOT FRAMEWORK — LOG DO CENÁRIO', 'ROBOT FRAMEWORK — SCENARIO LOG'), cardX + 4, currentY + 5);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(5.5);
+              doc.setTextColor(100, 116, 139);
+              doc.text(
+                t(`Referência: ${tc.id} · ${tc.name}`, `Reference: ${tc.id} · ${tc.name}`),
+                cardX + 4,
+                currentY + 9,
+              );
+
+              const imgX = cardX + (cardW - imgW) / 2;
+              const imgY = currentY + 11;
+              doc.setDrawColor(56, 189, 248);
+              doc.setLineWidth(0.35);
+              doc.roundedRect(imgX - 0.5, imgY - 0.5, imgW + 1, imgH + 1, 0.8, 0.8, 'S');
+              doc.addImage(reportUrl, 'PNG', imgX, imgY, imgW, imgH, undefined, 'FAST');
+              currentY += cardH + 5;
+            }
+          }
         }
 
         // Breathing room between consecutive test cases
@@ -1180,6 +1320,45 @@ export const handleExportExecutionReportToPDF = async (
       }
 
       currentY += 3;
+    }
+
+    // ---- Report Robot Framework (suíte completa) ----
+    if (exec.report_screenshot_path) {
+      const suiteReportUrl = await loadScreenshotDataUrl(exec.id, exec.report_screenshot_path);
+      if (suiteReportUrl) {
+        checkPageBreak(40);
+        const sx = marginX + 2;
+        const sw = contentWidth - 4;
+        const hdrH = 10;
+        doc.setFillColor(8, 12, 24);
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(sx, currentY, sw, hdrH, 2, 2, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(16, 185, 129);
+        doc.text(t('RELATÓRIO ROBOT FRAMEWORK — SUÍTE COMPLETA', 'ROBOT FRAMEWORK REPORT — FULL SUITE'), sx + 4, currentY + 6.5);
+        currentY += hdrH + 3;
+
+        const { width: natW, height: natH } = await probeImageSize(suiteReportUrl);
+        const maxH = 110;
+        const scale = Math.min((sw - 6) / natW, maxH / natH, 1);
+        const imgW = natW * scale;
+        const imgH = natH * scale;
+        checkPageBreak(imgH + 8);
+
+        doc.setFillColor(4, 8, 18);
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(sx, currentY, sw, imgH + 4, 2, 2, 'FD');
+        const imgX = sx + (sw - imgW) / 2;
+        doc.addImage(suiteReportUrl, 'PNG', imgX, currentY + 2, imgW, imgH, undefined, 'FAST');
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(5);
+        doc.setTextColor(71, 85, 105);
+        doc.text('report.html', sx + 4, currentY + imgH + 3);
+        currentY += imgH + 10;
+      }
     }
 
     const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;

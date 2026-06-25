@@ -12,17 +12,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const runId = url.searchParams.get('runId')?.trim();
+  const folderParam = url.searchParams.get('folder')?.trim();
+  const resultsFolder = folderParam || runId;
   const relPath = url.searchParams.get('path')?.trim().replace(/\\/g, '/');
 
-  if (!runId || !relPath || relPath.includes('..') || path.isAbsolute(relPath)) {
+  if (!resultsFolder || !relPath || relPath.includes('..') || path.isAbsolute(relPath)) {
     return new Response('Parâmetros inválidos.', { status: 400 });
   }
 
   let resultsDir: string;
   try {
-    resultsDir = resolveResultsDir(runId);
+    resultsDir = resolveResultsDir(resultsFolder);
   } catch {
-    return new Response('runId inválido.', { status: 400 });
+    return new Response('Pasta de resultados inválida.', { status: 400 });
   }
 
   const fullPath = path.resolve(resultsDir, relPath);

@@ -13,6 +13,7 @@ export interface UseDatabaseResult {
   setSqliteDb: Dispatch<SetStateAction<VirtualDatabase>>;
   ready: boolean;
   reset: () => Promise<VirtualDatabase>;
+  clearExecutions: () => Promise<VirtualDatabase>;
   runSql: (query: string) => Promise<SqlQueryResult>;
 }
 
@@ -97,10 +98,18 @@ export function useDatabase(): UseDatabaseResult {
     return db;
   }, []);
 
+  const clearExecutions = useCallback(async (): Promise<VirtualDatabase> => {
+    const db = await apiClient.clearExecutionHistory();
+    skipPersistRef.current = true;
+    setSqliteDbState(db);
+    channelRef.current?.postMessage('changed');
+    return db;
+  }, []);
+
   const runSql = useCallback(
     (query: string): Promise<SqlQueryResult> => apiClient.runSql(query),
     [],
   );
 
-  return { sqliteDb, setSqliteDb: setSqliteDbState, ready, reset, runSql };
+  return { sqliteDb, setSqliteDb: setSqliteDbState, ready, reset, clearExecutions, runSql };
 }

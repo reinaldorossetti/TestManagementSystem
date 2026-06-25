@@ -14,7 +14,11 @@ export interface DbExecution {
   passed: number;
   failed: number;
   status: 'PASS' | 'FAIL';
-  results_path: string; // e.g., %ROBOT_HOME%/results/output_20260617_1234.xml
+  results_path: string; // caminho absoluto do output.xml
+  /** Nome da pasta em results/ (ex.: RUN-2026-06-25_17-51-30-47841). */
+  results_folder?: string;
+  /** Screenshot do report.html da suíte (ex.: artifacts/robot-report.png). */
+  report_screenshot_path?: string;
 }
 
 export interface DbTestCase {
@@ -24,6 +28,10 @@ export interface DbTestCase {
   category: string;
   status: 'PASS' | 'FAIL' | 'SKIP';
   duration_s: number;
+  /** ID do nó <test> no output.xml do Robot (ex.: s1-t1) — usado na captura do log. */
+  robot_test_id?: string;
+  /** Screenshot do trecho do log.html deste cenário. */
+  report_screenshot_path?: string;
 }
 
 export interface DbStepLog {

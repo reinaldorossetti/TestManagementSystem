@@ -600,6 +600,7 @@ export default function App({ initialTab }: AppProps = {}) {
     sqliteDb,
     setSqliteDb,
     reset: resetDatabaseRemote,
+    clearExecutions: clearExecutionsRemote,
     runSql: runSqlRemote,
   } = useDatabase();
 
@@ -886,9 +887,36 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
+  // Limpa somente execuções / test_cases / steps (preserva TMS, specs e pastas).
+  const handleClearExecutionHistory = async () => {
+    if (
+      !window.confirm(
+        language === 'PT'
+          ? 'Deseja zerar todo o histórico de execuções? Os casos TMS e especificações serão preservados.'
+          : 'Clear all execution history? TMS cases and specifications will be kept.',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await clearExecutionsRemote();
+    } catch (error) {
+      appendTerminalLog(
+        `[SQLITE] Falha ao limpar execuções: ${error instanceof Error ? error.message : 'erro desconhecido'}`,
+        'error',
+      );
+      return;
+    }
+
+    setRawSqlInput('SELECT * FROM executions ORDER BY timestamp DESC');
+    setSqlResults({ columns: [], rows: [], count: 0 });
+    appendTerminalLog(`[SQLITE] Histórico de execuções zerado. Pronto para novos runs reais.`, 'success');
+  };
+
   // Clean SQLite database (resets to the seed dataset on the backend).
   const handleResetDatabase = async () => {
-    if (!window.confirm("Deseja realmente limpar os registros de execuções do SQLite? (Isto reiniciará o banco para o estado inicial)")) {
+    if (!window.confirm("Deseja realmente reiniciar o banco para o estado inicial? (Execuções, specs TMS e pastas demo serão restaurados)")) {
       return;
     }
 
@@ -3122,6 +3150,7 @@ export default function App({ initialTab }: AppProps = {}) {
                 {/* Live Terminal (real local execution via xterm.js) */}
                 <LiveTerminal
                   language={language}
+                  onClearExecutions={handleClearExecutionHistory}
                   onPersisted={({ execution, testCases, steps }) => {
                     setSqliteDb((prev) => ({
                       ...prev,
@@ -3500,7 +3529,7 @@ export default function App({ initialTab }: AppProps = {}) {
               {/* Custom Allure-like reports component */}
               <ExecutionReports 
                 sqliteDb={sqliteDb}
-                onClearHistory={handleResetDatabase}
+                onClearHistory={handleClearExecutionHistory}
                 onRunFeature={() => handleRunRobotFramework()}
                 language={language}
                 onChangeLanguage={setLanguage}

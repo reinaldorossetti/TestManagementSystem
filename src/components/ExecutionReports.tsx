@@ -1017,7 +1017,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
             </button>
           </div>
 
-          {onClearHistory && sqliteDb.executions.length > 3 && (
+          {onClearHistory && sqliteDb.executions.length > 0 && (
             <button 
               onClick={onClearHistory}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-mono font-bold text-slate-400 hover:text-rose-450 border border-slate-820 hover:border-rose-900 rounded-lg transition-all"

@@ -1,21 +1,24 @@
 import path from 'node:path';
 
-/**
- * Centraliza a resolução de caminhos da pasta de resultados das execuções reais
- * do Robot Framework. Cada execução grava em `results/<runId>/output.xml`.
- *
- * Sanitiza o runId para evitar path traversal (somente caracteres seguros).
- */
-const RESULTS_ROOT = 'results';
+export { buildRunFolderName } from '@/src/utils/robotResultsFolder';
 
-const sanitizeRunId = (runId: string): string => runId.replace(/[^a-zA-Z0-9._-]/g, '');
+export const RESULTS_ROOT = 'results';
 
-export function resolveResultsDir(runId: string): string {
-  const safe = sanitizeRunId(runId);
-  if (!safe) throw new Error('runId inválido.');
+const sanitizeFolder = (value: string): string => value.replace(/[^a-zA-Z0-9._-]/g, '');
+
+export function resolveResultsDir(runFolder: string): string {
+  const safe = sanitizeFolder(runFolder);
+  if (!safe) throw new Error('Pasta de resultados inválida.');
   return path.join(process.cwd(), RESULTS_ROOT, safe);
 }
 
-export function resolveOutputXmlPath(runId: string): string {
-  return path.join(resolveResultsDir(runId), 'output.xml');
+export function resolveOutputXmlPath(runFolder: string): string {
+  return path.join(resolveResultsDir(runFolder), 'output.xml');
+}
+
+/** Extrai o nome da pasta em `results/` a partir do caminho do output.xml. */
+export function extractResultsFolderFromPath(resultsPath: string): string | null {
+  const normalized = resultsPath.replace(/\\/g, '/');
+  const match = normalized.match(/\/results\/([^/]+)\//i);
+  return match?.[1] ?? null;
 }
