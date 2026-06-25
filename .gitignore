@@ -17,6 +17,9 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 
+# Robot Framework real execution outputs (Live Terminal)
+/results/
+
 # Playwright
 /test-results/
 /playwright-report/

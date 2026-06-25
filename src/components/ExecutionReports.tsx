@@ -278,9 +278,9 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
             {/* Export Report to PDF (mirrors this report's layout) */}
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 const linked = sqliteDb.test_cases.filter(tc => tc.execution_id === exec.id);
-                handleExportExecutionReportToPDF(exec, linked, sqliteDb.steps, language);
+                await handleExportExecutionReportToPDF(exec, linked, sqliteDb.steps, language);
               }}
               className="flex items-center gap-1.5 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 px-2.5 py-1 rounded-lg text-rose-400 transition-all cursor-pointer font-bold shadow-sm"
               title={t("Exportar este relatório para PDF", "Export this report to PDF")}

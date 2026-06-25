@@ -15,6 +15,7 @@ export const stepInputSchema = z.object({
   step_type: stepType,
   text: z.string(),
   status: testStatus,
+  screenshot_path: z.string().optional(),
 });
 
 export const testCaseInputSchema = z.object({

@@ -67,6 +67,32 @@ const deriveTargetSpec = (command: string, t: (pt: string, en: string) => string
   return t('Suite Completa: cardmais.feature', 'Full Suite: cardmais.feature');
 };
 
+/** Carrega screenshot do disco (via API) como data URL para embed no jsPDF. */
+const loadScreenshotDataUrl = async (runId: string, screenshotPath: string): Promise<string | null> => {
+  try {
+    const params = new URLSearchParams({ runId, path: screenshotPath });
+    const res = await fetch(`/api/terminal/screenshot?${params.toString()}`);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
+const probeImageSize = (dataUrl: string): Promise<{ width: number; height: number }> =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+    img.onerror = () => resolve({ width: 1366, height: 768 });
+    img.src = dataUrl;
+  });
+
 const SEVERITY_COLORS: Record<Severity, { bg: RGB; fg: RGB }> = {
   Critical: { bg: [30, 58, 138], fg: [191, 219, 254] },
   High: { bg: [49, 46, 129], fg: [199, 210, 254] },
@@ -534,7 +560,7 @@ export const handleExportTestCasesToPDF = (
  * Robot command), success-rate donut gauge, KPI cards (Total/Failed/Broken/
  * Passed/Skipped) and the grouped scenario/step tracer.
  */
-export const handleExportExecutionReportToPDF = (
+export const handleExportExecutionReportToPDF = async (
   exec: DbExecution,
   testCases: DbTestCase[],
   steps: DbStepLog[],
@@ -907,7 +933,7 @@ export const handleExportExecutionReportToPDF = (
       (categoriesMap[cat] ||= []).push(tc);
     });
 
-    Object.keys(categoriesMap).forEach((category) => {
+    for (const category of Object.keys(categoriesMap)) {
       const list = categoriesMap[category];
       const catPass = list.filter((c) => c.status === 'PASS').length;
       const catFail = list.filter((c) => c.status === 'FAIL').length;
@@ -947,7 +973,7 @@ export const handleExportExecutionReportToPDF = (
       doc.text(cenLabel, chipX, catY + 4.6);
       currentY = catY + 7 + 3;
 
-      list.forEach((tc) => {
+      for (const tc of list) {
         checkPageBreak(17);
 
         // Case row: status icon + id badge + (BDD scenario) + name + duration + STEPS chip
@@ -1018,7 +1044,7 @@ export const handleExportExecutionReportToPDF = (
           );
           currentY += 5;
         } else {
-          caseSteps.forEach((st) => {
+          for (const st of caseSteps) {
             checkPageBreak(6.5);
             const stepY = currentY;
             const rowLeft = marginX + 13;
@@ -1064,16 +1090,97 @@ export const handleExportExecutionReportToPDF = (
             const stepLine = (doc.splitTextToSize(`"${st.text}"`, txtMaxW) as string[])[0] || '';
             doc.text(stepLine, txtX, stepY);
             currentY += 6;
-          });
+          }
           currentY += 1;
+        }
+
+        // ---- Evidências visuais (screenshots When/Then) ----
+        const evidenceSteps = caseSteps.filter((s) => s.screenshot_path);
+        if (evidenceSteps.length > 0) {
+          checkPageBreak(28);
+          const evHeaderH = 12;
+          doc.setFillColor(12, 18, 32);
+          doc.setDrawColor(255, 102, 0);
+          doc.setLineWidth(0.35);
+          doc.roundedRect(marginX + 4, currentY, contentWidth - 8, evHeaderH, 2, 2, 'FD');
+          doc.setFillColor(255, 102, 0);
+          doc.rect(marginX + 4, currentY, 1.4, evHeaderH, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.5);
+          doc.setTextColor(255, 102, 0);
+          doc.text(t('EVIDÊNCIAS VISUAIS', 'VISUAL EVIDENCE'), marginX + 8, currentY + 4.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6);
+          doc.setTextColor(100, 116, 139);
+          doc.text(`${t('Cenário', 'Scenario')}:`, marginX + 8, currentY + 9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(226, 232, 240);
+          const evName = (doc.splitTextToSize(tc.name, contentWidth - 38) as string[])[0] || tc.name;
+          doc.text(evName, marginX + 22, currentY + 9);
+          currentY += evHeaderH + 5;
+
+          for (const st of evidenceSteps) {
+            const dataUrl = await loadScreenshotDataUrl(exec.id, st.screenshot_path!);
+            if (!dataUrl) continue;
+
+            const { width: natW, height: natH } = await probeImageSize(dataUrl);
+            const maxImgW = contentWidth - 20;
+            const maxImgH = 62;
+            const scale = Math.min(maxImgW / natW, maxImgH / natH, 1);
+            const imgW = natW * scale;
+            const imgH = natH * scale;
+            const cardH = imgH + 14;
+            const cardX = marginX + 8;
+
+            checkPageBreak(cardH + 6);
+
+            doc.setFillColor(8, 11, 22);
+            doc.setDrawColor(30, 41, 59);
+            doc.setLineWidth(0.25);
+            doc.roundedRect(cardX, currentY, contentWidth - 16, cardH, 2, 2, 'FD');
+
+            const kwEv = STEP_KEYWORD_COLOR[st.step_type] || STEP_KEYWORD_COLOR.AND;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(5.5);
+            const evKw = st.step_type.toUpperCase();
+            const evKwW = doc.getTextWidth(evKw) + 3.5;
+            doc.setFillColor(kwEv.bg[0], kwEv.bg[1], kwEv.bg[2]);
+            doc.roundedRect(cardX + 4, currentY + 3, evKwW, 3.8, 0.6, 0.6, 'F');
+            doc.setTextColor(kwEv.fg[0], kwEv.fg[1], kwEv.fg[2]);
+            doc.text(evKw, cardX + 5.5, currentY + 5.6);
+
+            drawStatusIcon(cardX + contentWidth - 28, currentY + 5.2, 1.3, st.status);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.2);
+            doc.setTextColor(203, 213, 225);
+            const capLine = (doc.splitTextToSize(st.text, contentWidth - 48) as string[])[0] || st.text;
+            doc.text(capLine, cardX + 4 + evKwW + 2, currentY + 5.6);
+
+            const imgX = cardX + (contentWidth - 16 - imgW) / 2;
+            const imgY = currentY + 9;
+            doc.setDrawColor(255, 102, 0);
+            doc.setLineWidth(0.4);
+            doc.roundedRect(imgX - 0.5, imgY - 0.5, imgW + 1, imgH + 1, 1, 1, 'S');
+            doc.addImage(dataUrl, 'PNG', imgX, imgY, imgW, imgH, undefined, 'FAST');
+
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(5);
+            doc.setTextColor(71, 85, 105);
+            const fileLabel = st.screenshot_path!.split('/').pop() || st.screenshot_path!;
+            doc.text(fileLabel, cardX + 4, currentY + cardH - 2);
+
+            currentY += cardH + 4;
+          }
+          currentY += 2;
         }
 
         // Breathing room between consecutive test cases
         currentY += 4;
-      });
+      }
 
       currentY += 3;
-    });
+    }
 
     const fileName = `Relatorio_Execucao_${exec.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(fileName);

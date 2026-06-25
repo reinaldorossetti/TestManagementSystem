@@ -50,6 +50,7 @@ import {
 import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/featureLoader';
 import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
+import { LiveTerminal } from './components/LiveTerminal';
 import { handleExportToExcel } from './utils/excelExporter';
 import { handleExportTestCasesToPDF } from './utils/pdfExporter';
 import { useDatabase } from './hooks/useDatabase';
@@ -3117,6 +3118,19 @@ export default function App({ initialTab }: AppProps = {}) {
                     )}
                   </div>
                 </div>
+
+                {/* Live Terminal (real local execution via xterm.js) */}
+                <LiveTerminal
+                  language={language}
+                  onPersisted={({ execution, testCases, steps }) => {
+                    setSqliteDb((prev) => ({
+                      ...prev,
+                      executions: [execution, ...prev.executions],
+                      test_cases: [...testCases, ...prev.test_cases],
+                      steps: [...steps, ...prev.steps],
+                    }));
+                  }}
+                />
 
                 {/* Automation Tip */}
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-start gap-3.5 text-xs">

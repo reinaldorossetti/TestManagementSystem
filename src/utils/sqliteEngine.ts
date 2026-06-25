@@ -32,6 +32,8 @@ export interface DbStepLog {
   step_type: 'GIVEN' | 'WHEN' | 'THEN' | 'AND';
   text: string;
   status: 'PASS' | 'FAIL' | 'SKIP';
+  /** Caminho relativo dentro de results/<runId>/ (ex.: browser/screenshot/when-standard_user.png). */
+  screenshot_path?: string;
 }
 
 export interface DbTestCaseSphere {
@@ -64,58 +66,11 @@ export interface VirtualDatabase {
   test_folders?: string[];
 }
 
-// Initial seed data representing past automated runs of robot framework
+// Initial seed data — execuções vazias; novos runs reais preenchem via Terminal Ao Vivo.
 export const INITIAL_DB_SEED: VirtualDatabase = {
-  executions: [
-    {
-      id: "RUN-1718610001",
-      timestamp: "2026-06-15 08:30:12",
-      command: "python -m robot -A project_args_file.txt --timestampoutputs -i recarga_transporte_tests ./",
-      duration_s: 1.84,
-      total_tests: 5,
-      passed: 5,
-      failed: 0,
-      status: "PASS",
-      results_path: "%ROBOT_HOME%/results/output_20260615_083012.xml"
-    },
-    {
-      id: "RUN-1718610002",
-      timestamp: "2026-06-16 10:15:45",
-      command: "python -m robot -A project_args_file.txt --timestampoutputs -i login_tests ./",
-      duration_s: 3.25,
-      total_tests: 8,
-      passed: 7,
-      failed: 1,
-      status: "FAIL",
-      results_path: "%ROBOT_HOME%/results/output_20260616_101545.xml"
-    },
-    {
-      id: "RUN-1718610003",
-      timestamp: "2026-06-16 14:02:10",
-      command: "python -m robot -A project_args_file.txt --timestampoutputs -i checkout_verification ./",
-      duration_s: 1.20,
-      total_tests: 4,
-      passed: 4,
-      failed: 0,
-      status: "PASS",
-      results_path: "%ROBOT_HOME%/results/output_20260616_140210.xml"
-    }
-  ],
-  test_cases: [
-    { id: "TC-101", execution_id: "RUN-1718610001", name: "Recarga de transporte simples com saldo ok", category: "Recarga de Bilhete", status: "PASS", duration_s: 0.41 },
-    { id: "TC-102", execution_id: "RUN-1718610001", name: "Tentativa de recarga com cartao inexistente", category: "Recarga de Bilhete", status: "PASS", duration_s: 0.38 },
-    { id: "TC-103", execution_id: "RUN-1718610001", name: "Limite maximo de recarga diaria atingido", category: "Recarga de Bilhete", status: "PASS", duration_s: 0.52 },
-    { id: "TC-104", execution_id: "RUN-1718610002", name: "Senha de acesso valida ativa fluxo principal", category: "Autenticação (Login)", status: "PASS", duration_s: 0.35 },
-    { id: "TC-105", execution_id: "RUN-1718610002", name: "Login bloqueado apos 5 tentativas falhas", category: "Autenticação (Login)", status: "FAIL", duration_s: 1.20 }
-  ],
-  steps: [
-    { id: "ST-201", test_case_id: "TC-101", step_type: "GIVEN", text: "que o lojista abriu o modulo recarga de transporte", status: "PASS" },
-    { id: "ST-202", test_case_id: "TC-101", step_type: "WHEN", text: "insere o cartao do usuario e preenche R$ 20.00", status: "PASS" },
-    { id: "ST-203", test_case_id: "TC-101", step_type: "THEN", text: "deve aprovar de imediato e emitir comprovante impresso", status: "PASS" },
-    { id: "ST-204", test_case_id: "TC-105", step_type: "GIVEN", text: "que o usuario ja realizou 4 tentativas incorretas", status: "PASS" },
-    { id: "ST-205", test_case_id: "TC-105", step_type: "WHEN", text: "erra a senha pela quinta vez consecutiva", status: "PASS" },
-    { id: "ST-206", test_case_id: "TC-105", step_type: "THEN", text: "bloqueia o login e mostra o alerta temporario", status: "FAIL" }
-  ],
+  executions: [],
+  test_cases: [],
+  steps: [],
   test_specs: [
     {
       id: "SPEC-001",

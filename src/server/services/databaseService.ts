@@ -40,6 +40,16 @@ export async function resetDatabase(): Promise<VirtualDatabase> {
   return getSnapshot();
 }
 
+/** Remove apenas execuções, casos e passos — preserva specs, pastas e casos TMS. */
+export async function clearExecutionHistory(): Promise<VirtualDatabase> {
+  await prisma.$transaction(async (tx) => {
+    await tx.step.deleteMany();
+    await tx.testCase.deleteMany();
+    await tx.execution.deleteMany();
+  });
+  return getSnapshot();
+}
+
 /**
  * Transactional replace-all persistence used by the transitional snapshot save
  * path (mirrors the legacy localStorage blob). Granular endpoints remain the
