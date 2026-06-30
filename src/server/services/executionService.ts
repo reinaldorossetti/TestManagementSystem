@@ -5,6 +5,8 @@ import {
   deleteExecution as deleteExecutionRow,
   findExecutionById,
 } from '@/src/server/repositories/executionRepository';
+import { listSphereCases } from '@/src/server/repositories/testCaseSphereRepository';
+import { syncAutomatedStatusesAfterRobotRun } from '@/src/server/services/manualExecutionService';
 import type { PersistRunInput } from '@/src/server/validation/schemas';
 
 /**
@@ -13,6 +15,15 @@ import type { PersistRunInput } from '@/src/server/validation/schemas';
  */
 export async function persistRun(payload: PersistRunInput): Promise<void> {
   await prisma.$transaction((tx) => insertRun(payload, tx));
+
+  const sphereCases = await listSphereCases();
+  if (sphereCases.length > 0) {
+    await syncAutomatedStatusesAfterRobotRun(
+      payload.testCases,
+      payload.execution.timestamp,
+      sphereCases,
+    );
+  }
 }
 
 export async function getExecution(id: string): Promise<DbExecution | null> {

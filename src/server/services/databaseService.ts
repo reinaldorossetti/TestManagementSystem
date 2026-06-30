@@ -65,6 +65,7 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
     await tx.step.deleteMany();
     await tx.testCase.deleteMany();
     await tx.execution.deleteMany();
+    await tx.sphereManualExecution.deleteMany();
     await tx.testCaseHistory.deleteMany();
     await tx.testCaseSphere.deleteMany();
     await tx.testSpec.deleteMany();
@@ -163,6 +164,9 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
           expectedResult: sphereCase.expected_result,
           observation: sphereCase.observation ?? null,
           createdAt: sphereCase.created_at,
+          lastExecutionStatus: sphereCase.last_execution_status ?? null,
+          lastExecutionMode: sphereCase.last_execution_mode ?? null,
+          lastExecutedAt: sphereCase.last_executed_at ?? null,
           history: {
             create: (sphereCase.history ?? []).map((entry) => ({
               user: entry.user,

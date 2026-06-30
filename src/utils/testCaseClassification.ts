@@ -77,11 +77,20 @@ export const getComplexityDetails = (severity: Severity): string => {
 export const getStatusLabel = (status?: string): StatusLabel => {
   switch (status) {
     case 'PASS':
+    case 'Passed':
+    case 'PASSED':
       return 'Passed';
     case 'FAIL':
+    case 'Failed':
+    case 'FAILED':
       return 'Failed';
     case 'SKIP':
+    case 'Skipped':
+    case 'SKIPPED':
       return 'Skipped';
+    case 'BLOCKED':
+    case 'Blocked':
+      return 'Blocked';
     default:
       return 'Not Started';
   }

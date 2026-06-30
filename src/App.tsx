@@ -45,15 +45,19 @@ import {
   Folder,
   FolderOpen,
   Compass,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ClipboardCheck,
 } from 'lucide-react';
 import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/featureLoader';
 import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec, DbFolderAcceptanceDoc } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { LiveTerminal } from './components/LiveTerminal';
 import { TestCaseEvidenceTab } from './components/TestCaseEvidenceTab';
+import { ManualExecutionDialog } from './components/ManualExecutionDialog';
+import { SphereCaseStatusBadge } from './components/SphereCaseStatusBadge';
 import { handleExportToExcel } from './utils/excelExporter';
 import { handleExportTestCasesToPDF } from './utils/pdfExporter';
+import { buildStatusByCaseId } from './utils/sphereCaseExecution';
 import { buildFeatureRobotCommand } from './utils/robotCommands';
 import {
   createRunFolderForTimestamp,
@@ -672,6 +676,7 @@ export default function App({ initialTab }: AppProps = {}) {
   const [isEditingSphereTestCase, setIsEditingSphereTestCase] = useState<boolean>(false);
   const [isCreatingSphereTestCase, setIsCreatingSphereTestCase] = useState<boolean>(false);
   const [sphereActiveDetailTab, setSphereActiveDetailTab] = useState<'overview' | 'evidence' | 'insights' | 'scripts'>('overview');
+  const [manualExecutionDialogOpen, setManualExecutionDialogOpen] = useState(false);
   const [sphereCustomSqlQuery, setSphereCustomSqlQuery] = useState<{[key: string]: string}>({});
   const [sphereCustomScriptLanguage, setSphereCustomScriptLanguage] = useState<{[key: string]: string}>({});
 
@@ -1390,6 +1395,32 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
+  const handleManualExecutionCompleted = (updatedCase: DbTestCaseSphere) => {
+    setSqliteDb((prev) => ({
+      ...prev,
+      test_cases_sphere: (prev.test_cases_sphere || []).map((tc) =>
+        tc.id === updatedCase.id ? updatedCase : tc,
+      ),
+    }));
+
+    if (updatedCase.last_execution_status) {
+      setSphereTestCaseStatuses((prev) => {
+        const next = { ...prev, [updatedCase.id]: updatedCase.last_execution_status! };
+        localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    setToastMessage(
+      t('Execução manual registrada com sucesso!', 'Manual execution recorded successfully!'),
+    );
+    setTimeout(() => setToastMessage(null), 3000);
+    appendTerminalLog(
+      `[TMS] Execução manual: ${updatedCase.id} — ${updatedCase.last_execution_status} (${updatedCase.last_execution_mode})`,
+      'success',
+    );
+  };
+
   const handleSaveCurrentWorkspaceAsCases = () => {
     const parsed = parseGherkinFeature(gherkinContent);
     const folderLabel = resolveRobotFolderLabel(
@@ -1517,12 +1548,26 @@ export default function App({ initialTab }: AppProps = {}) {
         const result = await persistRobotRunOutput(runFolder, cmd, timestamp);
         if (result.ok) {
           const { execution, testCases, steps } = result.data;
+          const refreshedDb = await apiClient.getDatabase();
           setSqliteDb((prev) => ({
             ...prev,
             executions: [execution, ...prev.executions],
             test_cases: [...testCases, ...prev.test_cases],
             steps: [...steps, ...prev.steps],
+            test_cases_sphere: refreshedDb.test_cases_sphere ?? prev.test_cases_sphere,
           }));
+          if (refreshedDb.test_cases_sphere) {
+            setSphereTestCaseStatuses((prev) => {
+              const next = { ...prev };
+              for (const sphereCase of refreshedDb.test_cases_sphere ?? []) {
+                if (sphereCase.last_execution_status) {
+                  next[sphereCase.id] = sphereCase.last_execution_status;
+                }
+              }
+              localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(next));
+              return next;
+            });
+          }
           appendTerminalLog(
             `[TMS] Execução registrada: ${execution.id} — ${execution.total_tests} testes (${execution.passed} ok, ${execution.failed} falhas).`,
             'success',
@@ -1697,7 +1742,14 @@ export default function App({ initialTab }: AppProps = {}) {
                       alert(t("Não existem casos de teste cadastrados para exportar.", "There are no registered test cases to export."));
                       return;
                     }
-                    handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage, sphereTestCaseStatuses, language);
+                    handleExportToExcel(
+                      casesToExport,
+                      foldersList,
+                      sphereCustomSqlQuery,
+                      sphereCustomScriptLanguage,
+                      buildStatusByCaseId(casesToExport, sphereTestCaseStatuses),
+                      language,
+                    );
                     setToastMessage(t("Plataforma: Casos de teste exportados para Excel com sucesso!", "Platform: Test cases successfully exported to Excel!"));
                     setTimeout(() => setToastMessage(null), 3000);
                   }}
@@ -1718,7 +1770,12 @@ export default function App({ initialTab }: AppProps = {}) {
                       alert(t("Não existem casos de teste cadastrados para exportar.", "There are no registered test cases to export."));
                       return;
                     }
-                    handleExportTestCasesToPDF(casesToExport, foldersList, sphereTestCaseStatuses, language);
+                    handleExportTestCasesToPDF(
+                      casesToExport,
+                      foldersList,
+                      buildStatusByCaseId(casesToExport, sphereTestCaseStatuses),
+                      language,
+                    );
                     setToastMessage(t("Plataforma: Plano de testes exportado para PDF com sucesso!", "Platform: Test plan successfully exported to PDF!"));
                     setTimeout(() => setToastMessage(null), 3000);
                   }}
@@ -2168,42 +2225,12 @@ export default function App({ initialTab }: AppProps = {}) {
                           <span className="text-[10px] text-slate-400 font-mono">{currentCase.created_at || t("A pouco", "Just now")}</span>
                         </div>
 
-                        {/* Live Execution Status Badge */}
-                        {(() => {
-                          const status = sphereTestCaseStatuses[currentCase.id] || 'Not executed';
-                          let displayLabel = t("Não Iniciado", "Not Started");
-                          let colorClasses = 'bg-slate-100 text-slate-600 border-slate-300';
-                          let dotColor = 'bg-slate-400';
-                          
-                          if (status === 'PASS' || status === 'Passed' || status === 'PASSED') {
-                            displayLabel = t("Aprovado", "Passed");
-                            colorClasses = 'bg-emerald-50 text-emerald-700 border-emerald-300/80';
-                            dotColor = 'bg-emerald-500';
-                          } else if (status === 'SKIP' || status === 'Skipped' || status === 'SKIPPED') {
-                            displayLabel = t("Ignorado", "Skipped");
-                            colorClasses = 'bg-amber-50 text-amber-700 border-amber-300/80';
-                            dotColor = 'bg-amber-500';
-                          } else if (status === 'FAIL' || status === 'Failed' || status === 'FAILED') {
-                            displayLabel = t("Falhou", "Failed");
-                            colorClasses = 'bg-rose-50 text-rose-700 border-rose-300/80';
-                            dotColor = 'bg-rose-500';
-                          } else if (status === 'BLOCKED' || status === 'Blocked') {
-                            displayLabel = t("Bloqueado", "Blocked");
-                            colorClasses = 'bg-violet-50 text-violet-700 border-violet-300/80';
-                            dotColor = 'bg-violet-500';
-                          } else if (status === 'IN_PROGRESS' || status === 'In Progress' || status === 'running') {
-                            displayLabel = t("Em Progresso", "In Progress");
-                            colorClasses = 'bg-blue-50 text-blue-700 border-blue-300/80';
-                            dotColor = 'bg-blue-500';
-                          }
-
-                          return (
-                            <div className={`flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] font-bold font-mono border rounded-lg shadow-sm ${colorClasses}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                              <span>{displayLabel}</span>
-                            </div>
-                          );
-                        })()}
+                        <SphereCaseStatusBadge
+                          testCase={currentCase}
+                          localStatuses={sphereTestCaseStatuses}
+                          t={t}
+                          variant="light"
+                        />
                       </div>
                       
                       <h3 className="text-[15px] font-extrabold text-slate-800 mt-1.5 leading-snug font-sans">
@@ -2449,6 +2476,15 @@ export default function App({ initialTab }: AppProps = {}) {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setManualExecutionDialogOpen(true)}
+                          className="border border-violet-500 bg-violet-600 hover:bg-violet-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-violet-500/10 cursor-pointer"
+                          title={t("Registrar execução manual deste caso de teste", "Record manual execution for this test case")}
+                        >
+                          <ClipboardCheck className="w-4 h-4 text-white stroke-[2.5px]" />
+                          {t("Executar Manualmente", "Run Manually")}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             handleLoadTestCaseToWorkspace(currentCase.id);
                           }}
@@ -2472,6 +2508,22 @@ export default function App({ initialTab }: AppProps = {}) {
           <span></span>
           <span>{t("Total:", "Total:")} {(sqliteDb.test_cases_sphere || []).length} {t("casos de testes arquivados", "test cases archived")}</span>
         </footer>
+
+        {(() => {
+          const dialogCase = (sqliteDb.test_cases_sphere || []).find(
+            (tc) => tc.id === selectedSphereTestCaseId,
+          );
+          if (!dialogCase) return null;
+          return (
+            <ManualExecutionDialog
+              testCase={dialogCase}
+              open={manualExecutionDialogOpen}
+              onClose={() => setManualExecutionDialogOpen(false)}
+              onCompleted={handleManualExecutionCompleted}
+              t={t}
+            />
+          );
+        })()}
       </div>
     );
   };
@@ -4161,7 +4213,14 @@ export default function App({ initialTab }: AppProps = {}) {
                           alert("Não existem casos de teste cadastrados para exportar.");
                           return;
                         }
-                        handleExportToExcel(casesToExport, foldersList, sphereCustomSqlQuery, sphereCustomScriptLanguage, sphereTestCaseStatuses, language);
+                        handleExportToExcel(
+                      casesToExport,
+                      foldersList,
+                      sphereCustomSqlQuery,
+                      sphereCustomScriptLanguage,
+                      buildStatusByCaseId(casesToExport, sphereTestCaseStatuses),
+                      language,
+                    );
                         setToastMessage("Plataforma: Casos de teste exportados para Excel com sucesso!");
                         setTimeout(() => setToastMessage(null), 3000);
                       }}
@@ -4182,7 +4241,12 @@ export default function App({ initialTab }: AppProps = {}) {
                           alert("Não existem casos de teste cadastrados para exportar.");
                           return;
                         }
-                        handleExportTestCasesToPDF(casesToExport, foldersList, sphereTestCaseStatuses, language);
+                        handleExportTestCasesToPDF(
+                      casesToExport,
+                      foldersList,
+                      buildStatusByCaseId(casesToExport, sphereTestCaseStatuses),
+                      language,
+                    );
                         setToastMessage("Plataforma: Plano de testes exportado para PDF com sucesso!");
                         setTimeout(() => setToastMessage(null), 3000);
                       }}
@@ -4611,42 +4675,12 @@ export default function App({ initialTab }: AppProps = {}) {
                               </span>
                             </div>
 
-                            {/* Live Execution Status Badge */}
-                            {(() => {
-                              const status = sphereTestCaseStatuses[currentCase.id] || 'Not executed';
-                              let displayLabel = t("Não Iniciado", "Not Started");
-                              let colorClasses = 'bg-slate-800 text-slate-400 border-slate-700/60';
-                              let dotColor = 'bg-slate-500';
-                              
-                              if (status === 'PASS' || status === 'Passed' || status === 'PASSED') {
-                                displayLabel = t("Aprovado", "Passed");
-                                colorClasses = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                                dotColor = 'bg-emerald-400';
-                              } else if (status === 'SKIP' || status === 'Skipped' || status === 'SKIPPED') {
-                                displayLabel = t("Ignorado", "Skipped");
-                                colorClasses = 'bg-amber-500/15 text-amber-400 border-amber-500/20';
-                                dotColor = 'bg-amber-400';
-                              } else if (status === 'FAIL' || status === 'Failed' || status === 'FAILED') {
-                                displayLabel = t("Falhou", "Failed");
-                                colorClasses = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                                dotColor = 'bg-rose-400';
-                              } else if (status === 'BLOCKED' || status === 'Blocked') {
-                                displayLabel = t("Bloqueado", "Blocked");
-                                colorClasses = 'bg-violet-500/15 text-violet-400 border-violet-500/20';
-                                dotColor = 'bg-violet-400';
-                              } else if (status === 'IN_PROGRESS' || status === 'In Progress' || status === 'running') {
-                                displayLabel = t("Em Progresso", "In Progress");
-                                colorClasses = 'bg-blue-500/15 text-blue-400 border-blue-500/20';
-                                dotColor = 'bg-blue-400';
-                              }
-
-                              return (
-                                <div className={`flex items-center gap-1 px-2 py-0.5 text-[9.5px] font-bold font-mono border rounded-lg shadow-sm ${colorClasses}`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                                  <span>{displayLabel}</span>
-                                </div>
-                              );
-                            })()}
+                            <SphereCaseStatusBadge
+                              testCase={currentCase}
+                              localStatuses={sphereTestCaseStatuses}
+                              t={t}
+                              variant="dark"
+                            />
                           </div>
 
                           <h3 className="text-sm font-black text-white mt-1 leading-snug font-sans">
@@ -4886,6 +4920,15 @@ export default function App({ initialTab }: AppProps = {}) {
                             >
                               <Edit className="w-3.5 h-3.5 text-indigo-400" />
                               Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setManualExecutionDialogOpen(true)}
+                              className="border border-violet-500 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-violet-500/15 cursor-pointer"
+                              title={t("Registrar execução manual deste caso de teste", "Record manual execution for this test case")}
+                            >
+                              <ClipboardCheck className="w-4 h-4 text-white stroke-[2.5px]" />
+                              {t("Executar Manualmente", "Run Manually")}
                             </button>
                             <button
                               type="button"
@@ -5199,6 +5242,22 @@ export default function App({ initialTab }: AppProps = {}) {
           </>
         )}
       </AnimatePresence>
+
+      {(() => {
+        const dialogCase = (sqliteDb.test_cases_sphere || []).find(
+          (tc) => tc.id === selectedSphereTestCaseId,
+        );
+        if (!dialogCase) return null;
+        return (
+          <ManualExecutionDialog
+            testCase={dialogCase}
+            open={manualExecutionDialogOpen}
+            onClose={() => setManualExecutionDialogOpen(false)}
+            onCompleted={handleManualExecutionCompleted}
+            t={t}
+          />
+        );
+      })()}
     </div>
   );
 }

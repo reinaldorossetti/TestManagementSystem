@@ -7,6 +7,7 @@ import type {
   DbFolderAcceptanceDocHistory,
   DbTestCaseEvidenceBundle,
   DbTestCaseEvidenceItem,
+  DbSphereManualExecution,
 } from '@/src/utils/sqliteEngine';
 
 /**
@@ -230,4 +231,34 @@ export const apiClient = {
       `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/evidence/${encodeURIComponent(evidenceId)}`,
       { method: 'DELETE' },
     ),
+
+  recordManualExecution: (
+    testCaseId: string,
+    input: {
+      status: 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIP';
+      notes?: string;
+      executedBy?: string;
+      durationS?: number;
+    },
+  ) =>
+    request<{ execution: DbSphereManualExecution; testCase: DbTestCaseSphere }>(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/manual-execution`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
+
+  listManualExecutions: (testCaseId: string) =>
+    request<DbSphereManualExecution[]>(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/manual-execution`,
+    ),
+
+  getSphereExecutionSummary: (testCaseId: string) =>
+    request<{
+      test_case_id: string;
+      status: 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIP' | null;
+      mode: 'manual' | 'automated' | null;
+      executed_at: string | null;
+    }>(`/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/execution-summary`),
 };

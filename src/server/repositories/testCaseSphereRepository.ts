@@ -28,6 +28,9 @@ interface SphereUpdateData {
   steps?: string;
   expectedResult?: string;
   observation?: string | null;
+  lastExecutionStatus?: string | null;
+  lastExecutionMode?: string | null;
+  lastExecutedAt?: string | null;
 }
 
 export async function listSphereCases(client: DbClient = prisma): Promise<DbTestCaseSphere[]> {

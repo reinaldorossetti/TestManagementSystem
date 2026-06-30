@@ -61,6 +61,19 @@ export interface DbFolderAcceptanceDocHistory {
   time: string;
 }
 
+export type SphereExecutionMode = 'manual' | 'automated';
+export type SphereExecutionStatus = 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIP';
+
+export interface DbSphereManualExecution {
+  id: string;
+  test_case_id: string;
+  status: SphereExecutionStatus;
+  notes: string;
+  executed_by: string;
+  executed_at: string;
+  duration_s?: number;
+}
+
 export interface DbTestCaseSphere {
   id: string; // e.g. "RECEL01" or "BRC-026"
   folder: string; // e.g. "br.com.grupocard.contacard.dev/Recarga de telefone"
@@ -71,6 +84,9 @@ export interface DbTestCaseSphere {
   observation?: string;
   history?: { user: string; action: string; time: string }[];
   created_at: string;
+  last_execution_status?: SphereExecutionStatus;
+  last_execution_mode?: SphereExecutionMode;
+  last_executed_at?: string;
 }
 
 export type TestCaseEvidenceType = 'image' | 'video' | 'link';

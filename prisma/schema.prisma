@@ -107,18 +107,37 @@ model FolderAcceptanceDocHistory {
 
 /// A rich, editable test case (Sphere-style) with history.
 model TestCaseSphere {
-  id             String            @id
-  folder         String
-  title          String
-  preconditions  String            @default("")
-  steps          String            @default("")
-  expectedResult String            @default("") @map("expected_result")
-  observation    String?
-  createdAt      String            @map("created_at")
-  history        TestCaseHistory[]
+  id                  String                  @id
+  folder              String
+  title               String
+  preconditions       String                  @default("")
+  steps               String                  @default("")
+  expectedResult      String                  @default("") @map("expected_result")
+  observation         String?
+  createdAt           String                  @map("created_at")
+  lastExecutionStatus String?                 @map("last_execution_status")
+  lastExecutionMode   String?                 @map("last_execution_mode")
+  lastExecutedAt      String?                 @map("last_executed_at")
+  history             TestCaseHistory[]
+  manualExecutions    SphereManualExecution[]
 
   @@index([folder])
   @@map("test_cases_sphere")
+}
+
+/// Record of a manual QA execution for a sphere test case.
+model SphereManualExecution {
+  id         String         @id
+  testCaseId String         @map("test_case_id")
+  status     String
+  notes      String         @default("")
+  executedBy String         @default("Operador QA") @map("executed_by")
+  executedAt String         @map("executed_at")
+  durationS  Float?         @map("duration_s")
+  testCase   TestCaseSphere @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@index([testCaseId])
+  @@map("sphere_manual_executions")
 }
 
 /// An audit-trail entry for a sphere test case.

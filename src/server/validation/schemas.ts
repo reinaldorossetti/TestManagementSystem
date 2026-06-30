@@ -129,6 +129,15 @@ export const testCaseEvidenceLinkSchema = z.object({
   title: z.string().optional(),
 });
 
+const sphereExecutionStatus = z.enum(['PASS', 'FAIL', 'BLOCKED', 'SKIP']);
+
+export const manualExecutionCreateSchema = z.object({
+  status: sphereExecutionStatus,
+  notes: z.string().max(4000).optional(),
+  executedBy: z.string().min(1).max(120).optional(),
+  durationS: z.number().min(0).max(86400).optional(),
+});
+
 export const sqlQuerySchema = z.object({
   query: z.string().min(1),
 });
@@ -151,6 +160,9 @@ const sphereFullSchema = z.object({
   expected_result: z.string(),
   observation: z.string().optional(),
   created_at: z.string(),
+  last_execution_status: sphereExecutionStatus.optional(),
+  last_execution_mode: z.enum(['manual', 'automated']).optional(),
+  last_executed_at: z.string().optional(),
   history: z.array(historyEntrySchema).optional(),
 });
 
@@ -177,3 +189,4 @@ export type SphereCreateInput = z.infer<typeof sphereCreateSchema>;
 export type SphereUpdateInput = z.infer<typeof sphereUpdateSchema>;
 export type FolderCreateInput = z.infer<typeof folderCreateSchema>;
 export type FolderRenameInput = z.infer<typeof folderRenameSchema>;
+export type ManualExecutionCreateInput = z.infer<typeof manualExecutionCreateSchema>;

@@ -83,6 +83,9 @@ export function toDbTestCaseSphere(
     expected_result: row.expectedResult,
     observation: row.observation ?? undefined,
     created_at: row.createdAt,
+    last_execution_status: (row.lastExecutionStatus as DbTestCaseSphere['last_execution_status']) ?? undefined,
+    last_execution_mode: (row.lastExecutionMode as DbTestCaseSphere['last_execution_mode']) ?? undefined,
+    last_executed_at: row.lastExecutedAt ?? undefined,
     history: (row.history ?? []).map((entry) => ({
       user: entry.user,
       action: entry.action,

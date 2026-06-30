@@ -22,6 +22,7 @@ type PrismaClientWithDelegates = PrismaClient & {
   folderAcceptanceDoc?: { findMany: (...args: unknown[]) => unknown };
   folderAcceptanceDocHistory?: { findMany: (...args: unknown[]) => unknown };
   testCaseEvidence?: { findMany: (...args: unknown[]) => unknown };
+  sphereManualExecution?: { findMany: (...args: unknown[]) => unknown };
 };
 
 const isPrismaClientReady = (client: PrismaClient): boolean => {
@@ -29,7 +30,8 @@ const isPrismaClientReady = (client: PrismaClient): boolean => {
   return (
     typeof withDelegates.folderAcceptanceDoc?.findMany === 'function' &&
     typeof withDelegates.folderAcceptanceDocHistory?.findMany === 'function' &&
-    typeof withDelegates.testCaseEvidence?.findMany === 'function'
+    typeof withDelegates.testCaseEvidence?.findMany === 'function' &&
+    typeof withDelegates.sphereManualExecution?.findMany === 'function'
   );
 };
 
