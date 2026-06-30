@@ -124,6 +124,11 @@ export const folderDeleteSchema = z.object({
   path: z.string().min(1),
 });
 
+export const testCaseEvidenceLinkSchema = z.object({
+  url: z.string().url(),
+  title: z.string().optional(),
+});
+
 export const sqlQuerySchema = z.object({
   query: z.string().min(1),
 });

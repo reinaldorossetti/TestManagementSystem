@@ -133,3 +133,22 @@ model TestCaseHistory {
   @@index([testCaseId])
   @@map("test_case_history")
 }
+
+/// Manual evidence uploaded for a sphere test case (images in DB, videos on disk, links as URL).
+model TestCaseEvidence {
+  id           String @id
+  testCaseId   String @map("test_case_id")
+  source       String @default("manual")
+  evidenceType String @map("evidence_type")
+  title        String @default("")
+  mimeType     String? @map("mime_type")
+  fileName     String? @map("file_name")
+  imageData    Bytes?  @map("image_data")
+  storagePath  String? @map("storage_path")
+  externalUrl  String? @map("external_url")
+  createdAt    String @map("created_at")
+  createdBy    String @default("TMS") @map("created_by")
+
+  @@index([testCaseId])
+  @@map("test_case_evidence")
+}

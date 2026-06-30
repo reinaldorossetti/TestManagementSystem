@@ -5,6 +5,7 @@ import {
   updateSphereCase as updateSphereRow,
   deleteSphereCase as deleteSphereRow,
 } from '@/src/server/repositories/testCaseSphereRepository';
+import { purgeEvidenceForTestCase } from '@/src/server/services/testCaseEvidenceService';
 import type { SphereCreateInput, SphereUpdateInput } from '@/src/server/validation/schemas';
 import { nowTimestamp } from '@/src/server/utils/identifiers';
 
@@ -49,5 +50,6 @@ export async function updateCase(
 }
 
 export async function deleteCase(id: string): Promise<void> {
+  await purgeEvidenceForTestCase(id);
   await deleteSphereRow(id);
 }

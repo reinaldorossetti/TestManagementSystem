@@ -5,6 +5,8 @@ import type {
   DbTestCaseSphere,
   DbFolderAcceptanceDoc,
   DbFolderAcceptanceDocHistory,
+  DbTestCaseEvidenceBundle,
+  DbTestCaseEvidenceItem,
 } from '@/src/utils/sqliteEngine';
 
 /**
@@ -186,5 +188,46 @@ export const apiClient = {
         method: 'PATCH',
         body: JSON.stringify({ folderPath, content, user }),
       },
+    ),
+
+  getTestCaseEvidence: (testCaseId: string) =>
+    request<DbTestCaseEvidenceBundle>(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/evidence`,
+    ),
+
+  uploadTestCaseEvidence: async (testCaseId: string, file: File): Promise<DbTestCaseEvidenceItem> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/evidence`,
+      { method: 'POST', body: formData },
+    );
+
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: DbTestCaseEvidenceItem; error?: string }
+      | null;
+
+    if (!response.ok) {
+      const message = payload?.error ?? `Falha na requisição (${response.status}).`;
+      throw new ApiClientError(message, response.status);
+    }
+
+    return (payload?.data ?? payload) as DbTestCaseEvidenceItem;
+  },
+
+  addTestCaseEvidenceLink: (testCaseId: string, url: string, title?: string) =>
+    request<DbTestCaseEvidenceItem>(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/evidence`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ url, title }),
+      },
+    ),
+
+  deleteTestCaseEvidence: (testCaseId: string, evidenceId: string) =>
+    request<{ id: string }>(
+      `/api/test-cases-sphere/${encodeURIComponent(testCaseId)}/evidence/${encodeURIComponent(evidenceId)}`,
+      { method: 'DELETE' },
     ),
 };

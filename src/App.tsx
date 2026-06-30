@@ -51,6 +51,7 @@ import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/feat
 import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec, DbFolderAcceptanceDoc } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { LiveTerminal } from './components/LiveTerminal';
+import { TestCaseEvidenceTab } from './components/TestCaseEvidenceTab';
 import { handleExportToExcel } from './utils/excelExporter';
 import { handleExportTestCasesToPDF } from './utils/pdfExporter';
 import { buildFeatureRobotCommand } from './utils/robotCommands';
@@ -670,7 +671,7 @@ export default function App({ initialTab }: AppProps = {}) {
   const [searchSphereQuery, setSearchSphereQuery] = useState<string>('');
   const [isEditingSphereTestCase, setIsEditingSphereTestCase] = useState<boolean>(false);
   const [isCreatingSphereTestCase, setIsCreatingSphereTestCase] = useState<boolean>(false);
-  const [sphereActiveDetailTab, setSphereActiveDetailTab] = useState<'overview' | 'insights' | 'scripts'>('overview');
+  const [sphereActiveDetailTab, setSphereActiveDetailTab] = useState<'overview' | 'evidence' | 'insights' | 'scripts'>('overview');
   const [sphereCustomSqlQuery, setSphereCustomSqlQuery] = useState<{[key: string]: string}>({});
   const [sphereCustomScriptLanguage, setSphereCustomScriptLanguage] = useState<{[key: string]: string}>({});
 
@@ -2224,6 +2225,17 @@ export default function App({ initialTab }: AppProps = {}) {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setSphereActiveDetailTab('evidence')}
+                          className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
+                            sphereActiveDetailTab === 'evidence'
+                              ? 'border-sky-600 text-sky-600'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          {t("Evidências", "Evidence")}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setSphereActiveDetailTab('insights')}
                           className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
                             sphereActiveDetailTab === 'insights'
@@ -2336,6 +2348,10 @@ export default function App({ initialTab }: AppProps = {}) {
                           </p>
                         </div>
                       </div>
+                    )}
+
+                    {sphereActiveDetailTab === 'evidence' && currentCase && (
+                      <TestCaseEvidenceTab testCaseId={currentCase.id} t={t} />
                     )}
 
                     {sphereActiveDetailTab === 'insights' && (
@@ -4652,6 +4668,17 @@ export default function App({ initialTab }: AppProps = {}) {
                             </button>
                             <button
                               type="button"
+                              onClick={() => setSphereActiveDetailTab('evidence')}
+                              className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
+                                sphereActiveDetailTab === 'evidence'
+                                  ? 'border-[#FF6600] text-[#FF6600]'
+                                  : 'border-transparent text-slate-500 hover:text-slate-300'
+                              }`}
+                            >
+                              Evidências
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSphereActiveDetailTab('insights')}
                               className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
                                 sphereActiveDetailTab === 'insights'
@@ -4761,6 +4788,10 @@ export default function App({ initialTab }: AppProps = {}) {
                               </p>
                             </div>
                           </div>
+                        )}
+
+                        {sphereActiveDetailTab === 'evidence' && currentCase && (
+                          <TestCaseEvidenceTab testCaseId={currentCase.id} />
                         )}
 
                         {sphereActiveDetailTab === 'insights' && (

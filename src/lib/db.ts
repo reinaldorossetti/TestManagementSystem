@@ -21,13 +21,15 @@ const createPrismaClient = (): PrismaClient => {
 type PrismaClientWithDelegates = PrismaClient & {
   folderAcceptanceDoc?: { findMany: (...args: unknown[]) => unknown };
   folderAcceptanceDocHistory?: { findMany: (...args: unknown[]) => unknown };
+  testCaseEvidence?: { findMany: (...args: unknown[]) => unknown };
 };
 
 const isPrismaClientReady = (client: PrismaClient): boolean => {
   const withDelegates = client as PrismaClientWithDelegates;
   return (
     typeof withDelegates.folderAcceptanceDoc?.findMany === 'function' &&
-    typeof withDelegates.folderAcceptanceDocHistory?.findMany === 'function'
+    typeof withDelegates.folderAcceptanceDocHistory?.findMany === 'function' &&
+    typeof withDelegates.testCaseEvidence?.findMany === 'function'
   );
 };
 

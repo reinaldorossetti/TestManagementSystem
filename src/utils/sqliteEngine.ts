@@ -73,6 +73,33 @@ export interface DbTestCaseSphere {
   created_at: string;
 }
 
+export type TestCaseEvidenceType = 'image' | 'video' | 'link';
+export type TestCaseEvidenceSource = 'automated' | 'manual';
+
+export interface DbTestCaseEvidenceItem {
+  id: string;
+  test_case_id: string;
+  source: TestCaseEvidenceSource;
+  evidence_type: TestCaseEvidenceType;
+  title: string;
+  mime_type?: string;
+  file_name?: string;
+  storage_path?: string;
+  external_url?: string;
+  created_at: string;
+  created_by: string;
+  preview_url: string;
+  label?: string;
+  execution_id?: string;
+  results_folder?: string;
+  screenshot_path?: string;
+}
+
+export interface DbTestCaseEvidenceBundle {
+  latest: DbTestCaseEvidenceItem | null;
+  items: DbTestCaseEvidenceItem[];
+}
+
 export interface DbTestSpec {
   id: string;
   name: string;

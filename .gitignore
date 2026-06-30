@@ -20,6 +20,7 @@ prisma/*.db-journal
 
 # Robot Framework real execution outputs (Live Terminal)
 /results/
+/storage/
 
 # Playwright
 /test-results/
