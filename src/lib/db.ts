@@ -7,6 +7,9 @@ import { PrismaClient } from '@/generated/prisma/client';
  * Next.js re-evaluates modules on hot reload in development, which would otherwise
  * create a new database connection on every change. We cache the client on the
  * global object to guarantee a single instance per process.
+ *
+ * After `prisma generate` adds new models, the cached instance can be stale (missing
+ * delegates like `folderAcceptanceDoc`). We detect that and recreate the client.
  */
 const DATABASE_URL = process.env.DATABASE_URL ?? 'file:./prisma/dev.db';
 
@@ -15,12 +18,32 @@ const createPrismaClient = (): PrismaClient => {
   return new PrismaClient({ adapter });
 };
 
+type PrismaClientWithDelegates = PrismaClient & {
+  folderAcceptanceDoc?: { findMany: (...args: unknown[]) => unknown };
+  folderAcceptanceDocHistory?: { findMany: (...args: unknown[]) => unknown };
+};
+
+const isPrismaClientReady = (client: PrismaClient): boolean => {
+  const withDelegates = client as PrismaClientWithDelegates;
+  return (
+    typeof withDelegates.folderAcceptanceDoc?.findMany === 'function' &&
+    typeof withDelegates.folderAcceptanceDocHistory?.findMany === 'function'
+  );
+};
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();
+const resolvePrismaClient = (): PrismaClient => {
+  const cached = globalForPrisma.prisma;
+  if (cached && isPrismaClientReady(cached)) {
+    return cached;
+  }
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+  const client = createPrismaClient();
+  globalForPrisma.prisma = client;
+  return client;
+};
+
+export const prisma: PrismaClient = resolvePrismaClient();

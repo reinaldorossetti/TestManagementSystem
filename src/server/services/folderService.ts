@@ -4,6 +4,10 @@ import {
   folderExists,
   createFolder as createFolderRow,
 } from '@/src/server/repositories/folderRepository';
+import {
+  removeAcceptanceDocForFolder,
+  renameAcceptanceDocForFolder,
+} from '@/src/server/services/folderAcceptanceDocService';
 
 export class FolderConflictError extends Error {}
 export class FolderNotFoundError extends Error {}
@@ -56,6 +60,8 @@ export async function renameFolder(oldPath: string, newPath: string): Promise<vo
         data: { folder: replacement },
       });
     }
+
+    await renameAcceptanceDocForFolder(oldPath, newPath);
   });
 }
 
@@ -69,4 +75,6 @@ export async function deleteFolder(path: string): Promise<void> {
       where: { OR: [{ path }, { path: { startsWith: `${path}/` } }] },
     });
   });
+
+  await removeAcceptanceDocForFolder(path);
 }

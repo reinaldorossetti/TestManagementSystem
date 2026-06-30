@@ -29,6 +29,12 @@ export interface ParsedFeature {
   scenarios: ParsedScenario[];
 }
 
+/** Robot section header for keyword definitions (`*** Keywords ***`, `* Keywords *`, etc.). */
+function isRobotKeywordsSectionHeader(trimmed: string): boolean {
+  const inner = trimmed.replace(/\*/g, ' ').trim().toLowerCase();
+  return inner === 'keywords';
+}
+
 export function parseGherkinFeature(content: string): ParsedFeature {
   const lines = content.split('\n');
   
@@ -79,8 +85,16 @@ export function parseGherkinFeature(content: string): ParsedFeature {
       continue;
     }
 
+    // Stop parsing at Robot Keywords — implementation must not become scenario steps
+    if (isRobotKeywordsSectionHeader(trimmed)) {
+      currentScenario = null;
+      isReadingDocumentation = false;
+      pendingTags = [];
+      break;
+    }
+
     // Detect Robot Framework Section Headers
-    if (trimmed.startsWith('***')) {
+    if (trimmed.startsWith('***') || (trimmed.startsWith('*') && trimmed.endsWith('*'))) {
       isReadingDocumentation = false;
       continue;
     }

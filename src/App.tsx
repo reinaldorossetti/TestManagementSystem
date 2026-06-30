@@ -48,7 +48,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/featureLoader';
-import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec } from './utils/sqliteEngine';
+import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec, DbFolderAcceptanceDoc } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { LiveTerminal } from './components/LiveTerminal';
 import { handleExportToExcel } from './utils/excelExporter';
@@ -63,11 +63,17 @@ import {
 import {
   buildExecutionTagsFromRobotTestTags,
   extractRobotExecutionTags,
+  resolveRobotFolderLabel,
   type ExecutionTagOption,
   type RobotTestTagEntry,
 } from './utils/robotTagLoader';
 import { useDatabase } from './hooks/useDatabase';
 import { createTranslator } from './utils/i18n';
+import { apiClient } from './lib/api/client';
+import {
+  acceptanceDocRepoRelativePath,
+  acceptanceDocWebPath,
+} from './utils/acceptanceDocPaths';
 
 // Helper to render terminal log lines beautifully with soft/light GIVEN, WHEN, THEN colors
 const renderLoggedStep = (text: string) => {
@@ -451,6 +457,7 @@ export default function App({ initialTab }: AppProps = {}) {
   // File Upload Drag & Drop State and Ref
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const acceptanceDocInputRef = useRef<HTMLInputElement>(null);
 
   const importFileContent = (text: string, filename: string) => {
     try {
@@ -1036,7 +1043,78 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
-  // TMS Test Cases Management Operations
+  const resolveFolderAcceptanceDoc = (folderPath: string): DbFolderAcceptanceDoc | null =>
+    (sqliteDb.folder_acceptance_docs || []).find((doc) => doc.folder_path === folderPath) ?? null;
+
+  const handleImportAcceptanceDocClick = () => {
+    if (!selectedSphereFolder || selectedSphereFolder === 'all') return;
+    acceptanceDocInputRef.current?.click();
+  };
+
+  const handleAcceptanceDocFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selectedSphereFolder || selectedSphereFolder === 'all') return;
+
+    try {
+      const doc = await apiClient.uploadAcceptanceDoc(selectedSphereFolder, file);
+      const others = (sqliteDb.folder_acceptance_docs || []).filter(
+        (entry) => entry.folder_path !== doc.folder_path,
+      );
+      setSqliteDb({
+        ...sqliteDb,
+        folder_acceptance_docs: [...others, doc],
+      });
+      appendTerminalLog(
+        `[TMS] Critérios de aceite importados para "${selectedSphereFolder}" (${doc.repo_relative_path}).`,
+        'success',
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Falha ao importar critérios de aceite.';
+      alert(message);
+    }
+  };
+
+  const handleDeleteAcceptanceDoc = async (folderPath: string) => {
+    const folderLabel = folderPath.includes('/') ? folderPath.split('/').pop()! : folderPath;
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir os critérios de aceite de "${folderLabel}"?\n\nO arquivo será removido e a referência será retirada de todos os casos de teste desta pasta.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await apiClient.deleteAcceptanceDoc(folderPath);
+      const deletionTime = getFormattedTimestamp();
+      const updatedDocs = (sqliteDb.folder_acceptance_docs || []).filter(
+        (doc) => doc.folder_path !== folderPath,
+      );
+      const updatedCases = (sqliteDb.test_cases_sphere || []).map((testCase) => {
+        if (testCase.folder !== folderPath) return testCase;
+        return {
+          ...testCase,
+          history: [
+            ...(testCase.history || []),
+            { user: 'TMS', action: 'deleted acceptance criteria', time: deletionTime },
+          ],
+        };
+      });
+      setSqliteDb({
+        ...sqliteDb,
+        folder_acceptance_docs: updatedDocs,
+        test_cases_sphere: updatedCases,
+      });
+      appendTerminalLog(
+        `[TMS] Critérios de aceite removidos da pasta "${folderPath}".`,
+        'warn',
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Falha ao excluir critérios de aceite.';
+      alert(message);
+    }
+  };
+
   const handleCreateFolder = (folderName: string) => {
     if (!folderName.trim()) return;
     const folders = sqliteDb.test_folders || [];
@@ -1052,7 +1130,7 @@ export default function App({ initialTab }: AppProps = {}) {
     appendTerminalLog(`[TMS] Nova pasta criada: ${folderName}`, 'success');
   };
 
-  const handleUpdateFolderName = (oldFolderName: string, newFolderName: string) => {
+  const handleUpdateFolderName = async (oldFolderName: string, newFolderName: string) => {
     if (!newFolderName.trim()) return;
     if (oldFolderName === newFolderName) {
       setIsEditingFolder(false);
@@ -1075,11 +1153,29 @@ export default function App({ initialTab }: AppProps = {}) {
       }
       return tc;
     });
+
+    const updatedAcceptanceDocs = (sqliteDb.folder_acceptance_docs || []).map((doc) =>
+      doc.folder_path === oldFolderName
+        ? {
+            ...doc,
+            folder_path: newFolderName,
+            doc_web_path: acceptanceDocWebPath(newFolderName),
+            repo_relative_path: acceptanceDocRepoRelativePath(newFolderName),
+          }
+        : doc,
+    );
+
+    try {
+      await apiClient.renameAcceptanceDocFolder(oldFolderName, newFolderName);
+    } catch {
+      // Pasta pode não ter critério importado — segue com rename local.
+    }
     
     const updatedDb = {
       ...sqliteDb,
       test_folders: updatedFolders,
-      test_cases_sphere: updatedTestCases
+      test_cases_sphere: updatedTestCases,
+      folder_acceptance_docs: updatedAcceptanceDocs,
     };
     
     setSqliteDb(updatedDb);
@@ -1089,7 +1185,7 @@ export default function App({ initialTab }: AppProps = {}) {
     appendTerminalLog(`[TMS] Pasta renomeada de '${oldFolderName}' para '${newFolderName}'`, 'success');
   };
 
-  const handleDeleteFolder = (folderName: string) => {
+  const handleDeleteFolder = async (folderName: string) => {
     if (!folderName || folderName === 'all') {
       alert("Selecione uma pasta válida para excluir.");
       return;
@@ -1105,11 +1201,21 @@ export default function App({ initialTab }: AppProps = {}) {
 
     const updatedFolders = folders.filter(f => f !== folderName);
     const updatedTestCases = testCases.filter(tc => tc.folder !== folderName);
+    const updatedAcceptanceDocs = (sqliteDb.folder_acceptance_docs || []).filter(
+      (doc) => doc.folder_path !== folderName,
+    );
+
+    try {
+      await apiClient.deleteAcceptanceDoc(folderName);
+    } catch {
+      // Pasta pode não ter critério importado.
+    }
 
     const updatedDb = {
       ...sqliteDb,
       test_folders: updatedFolders,
-      test_cases_sphere: updatedTestCases
+      test_cases_sphere: updatedTestCases,
+      folder_acceptance_docs: updatedAcceptanceDocs,
     };
 
     setSqliteDb(updatedDb);
@@ -1285,7 +1391,11 @@ export default function App({ initialTab }: AppProps = {}) {
 
   const handleSaveCurrentWorkspaceAsCases = () => {
     const parsed = parseGherkinFeature(gherkinContent);
-    const folderName = `br.com.grupocard.contacard.dev/${parsed.title || 'Workspace Importados'}`;
+    const folderLabel = resolveRobotFolderLabel(
+      gherkinContent,
+      parsed.title !== 'Jornada TMS - Robot Suite' ? parsed.title : 'Workspace Importados',
+    );
+    const folderName = `br.com.grupocard.contacard.dev/${folderLabel}`;
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const existingFolders = sqliteDb.test_folders || [];
@@ -1450,6 +1560,14 @@ export default function App({ initialTab }: AppProps = {}) {
             <span className="text-xs font-mono">{toastMessage}</span>
           </div>
         )}
+
+        <input
+          ref={acceptanceDocInputRef}
+          type="file"
+          accept=".md,text/markdown"
+          className="hidden"
+          onChange={handleAcceptanceDocFileChange}
+        />
 
         {/* Header */}
         <header className="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0 shadow-sm">
@@ -1753,6 +1871,20 @@ export default function App({ initialTab }: AppProps = {}) {
                 </button>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={handleImportAcceptanceDocClick}
+              disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+              className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-slate-200 hover:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white py-2 text-[11px] font-mono font-bold text-sky-700 transition-colors"
+              title={t(
+                'Importar um arquivo .md compartilhado por todos os casos desta pasta',
+                'Import a .md file shared by all cases in this folder',
+              )}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {t('Importar Critérios de Aceite', 'Import Acceptance Criteria')}
+            </button>
 
             <div className="flex items-center justify-between mb-2.5 px-1">
               <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">{t("Casos de Teste", "Test Cases")}</span>
@@ -2118,6 +2250,36 @@ export default function App({ initialTab }: AppProps = {}) {
                     {sphereActiveDetailTab === 'overview' && (
                       /* Overview Panel */
                       <div className="flex flex-col gap-4">
+                        {(() => {
+                          const acceptanceDoc = resolveFolderAcceptanceDoc(currentCase.folder);
+                          return (
+                            <div className="flex flex-col gap-1 bg-sky-50/60 p-3.5 rounded-xl border border-sky-200 text-left">
+                              <span className="text-[10px] text-sky-700 uppercase font-mono font-extrabold tracking-wider font-bold">
+                                {t('Critério de Aceite', 'Acceptance Criteria')}
+                              </span>
+                              {acceptanceDoc ? (
+                                <a
+                                  href={acceptanceDoc.doc_web_path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-xs font-mono font-bold text-sky-700 hover:text-sky-900 border border-slate-200 hover:border-sky-500 rounded-lg px-3 py-2 w-fit bg-white transition-colors"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                  {acceptanceDoc.doc_title}
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <p className="text-[11px] font-sans text-slate-500">
+                                  {t(
+                                    'Nenhum critério importado para esta pasta.',
+                                    'No acceptance criteria imported for this folder.',
+                                  )}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {/* Pre-conditions */}
                         {currentCase.preconditions && (
                           <div className="flex flex-col gap-1 text-left">
@@ -4158,6 +4320,17 @@ export default function App({ initialTab }: AppProps = {}) {
                   )}
                 </div>
 
+                <button
+                  type="button"
+                  onClick={handleImportAcceptanceDocClick}
+                  disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+                  className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-slate-800 hover:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed bg-slate-950 py-2 text-[11px] font-mono font-bold text-sky-400 transition-colors"
+                  title="Importar um arquivo .md compartilhado por todos os casos desta pasta"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Importar Critérios de Aceite
+                </button>
+
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">Casos de Teste</span>
                   <span className="text-[10px] font-mono text-slate-450">
@@ -4505,6 +4678,33 @@ export default function App({ initialTab }: AppProps = {}) {
                         {sphereActiveDetailTab === 'overview' && (
                           /* Overview Panel */
                           <div className="flex flex-col gap-3.5">
+                            {(() => {
+                              const acceptanceDoc = resolveFolderAcceptanceDoc(currentCase.folder);
+                              return (
+                                <div className="flex flex-col gap-1 bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+                                  <span className="text-[10px] text-sky-400 uppercase font-mono font-extrabold tracking-wider">
+                                    Critério de Aceite
+                                  </span>
+                                  {acceptanceDoc ? (
+                                    <a
+                                      href={acceptanceDoc.doc_web_path}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-xs font-mono font-bold text-sky-400 hover:text-sky-300 border border-slate-800 hover:border-sky-500 rounded-lg px-3 py-2 w-fit bg-slate-950 transition-colors"
+                                    >
+                                      <BookOpen className="w-3.5 h-3.5" />
+                                      {acceptanceDoc.doc_title}
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  ) : (
+                                    <p className="text-[11px] font-sans text-slate-500">
+                                      Nenhum critério importado para esta pasta.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                             {/* Pre-conditions */}
                             {currentCase.preconditions && (
                               <div className="flex flex-col gap-1">

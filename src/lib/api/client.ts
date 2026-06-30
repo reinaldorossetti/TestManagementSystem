@@ -3,6 +3,8 @@ import type {
   DbExecution,
   DbTestSpec,
   DbTestCaseSphere,
+  DbFolderAcceptanceDoc,
+  DbFolderAcceptanceDocHistory,
 } from '@/src/utils/sqliteEngine';
 
 /**
@@ -24,7 +26,7 @@ export class ApiClientError extends Error {
   }
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
@@ -40,6 +42,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return (payload?.data ?? payload) as T;
+}
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  return requestJson<T>(url, init);
 }
 
 export const apiClient = {
@@ -121,4 +127,64 @@ export const apiClient = {
       method: 'DELETE',
       body: JSON.stringify({ path }),
     }),
+
+  getAcceptanceDoc: (folderPath: string) =>
+    request<DbFolderAcceptanceDoc>(
+      `/api/folders/acceptance-doc?folderPath=${encodeURIComponent(folderPath)}`,
+    ),
+
+  uploadAcceptanceDoc: async (folderPath: string, file: File): Promise<DbFolderAcceptanceDoc> => {
+    const formData = new FormData();
+    formData.append('folderPath', folderPath);
+    formData.append('file', file);
+
+    const response = await fetch('/api/folders/acceptance-doc', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: DbFolderAcceptanceDoc; error?: string }
+      | null;
+
+    if (!response.ok) {
+      const message = payload?.error ?? `Falha na requisição (${response.status}).`;
+      throw new ApiClientError(message, response.status);
+    }
+
+    return (payload?.data ?? payload) as DbFolderAcceptanceDoc;
+  },
+
+  renameAcceptanceDocFolder: (oldFolderPath: string, newFolderPath: string) =>
+    request<DbFolderAcceptanceDoc | { oldFolderPath: string; newFolderPath: string }>(
+      '/api/folders/acceptance-doc',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ oldFolderPath, newFolderPath }),
+      },
+    ),
+
+  deleteAcceptanceDoc: (folderPath: string) =>
+    request<{ folderPath: string }>(
+      `/api/folders/acceptance-doc?folderPath=${encodeURIComponent(folderPath)}`,
+      { method: 'DELETE' },
+    ),
+
+  getAcceptanceDocHistory: (folderPath: string) =>
+    request<DbFolderAcceptanceDocHistory[]>(
+      `/api/folders/acceptance-doc/history?folderPath=${encodeURIComponent(folderPath)}`,
+    ),
+
+  updateAcceptanceDocContent: (
+    folderPath: string,
+    content: string,
+    user?: string,
+  ) =>
+    request<{ doc: DbFolderAcceptanceDoc; history: DbFolderAcceptanceDocHistory }>(
+      `/api/folders/acceptance-doc?folderPath=${encodeURIComponent(folderPath)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ folderPath, content, user }),
+      },
+    ),
 };

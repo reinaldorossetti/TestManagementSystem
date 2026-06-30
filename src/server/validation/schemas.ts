@@ -99,6 +99,27 @@ export const folderRenameSchema = z.object({
   newPath: z.string().min(1),
 });
 
+const folderAcceptanceDocSchema = z.object({
+  folder_path: z.string().min(1),
+  doc_title: z.string().min(1),
+  doc_web_path: z.string().min(1),
+  repo_relative_path: z.string().min(1),
+  updated_at: z.string().min(1),
+});
+
+export const folderAcceptanceDocInputSchema = folderAcceptanceDocSchema;
+
+export const folderAcceptanceRenameSchema = z.object({
+  oldFolderPath: z.string().min(1),
+  newFolderPath: z.string().min(1),
+});
+
+export const folderAcceptanceDocUpdateSchema = z.object({
+  folderPath: z.string().min(1),
+  content: z.string().min(1),
+  user: z.string().min(1).optional(),
+});
+
 export const folderDeleteSchema = z.object({
   path: z.string().min(1),
 });
@@ -139,6 +160,7 @@ export const virtualDatabaseSchema = z.object({
   test_specs: z.array(testSpecFullSchema).optional(),
   test_cases_sphere: z.array(sphereFullSchema).optional(),
   test_folders: z.array(z.string()).optional(),
+  folder_acceptance_docs: z.array(folderAcceptanceDocSchema).optional(),
 });
 
 export type VirtualDatabaseInput = z.infer<typeof virtualDatabaseSchema>;

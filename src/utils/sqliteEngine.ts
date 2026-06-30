@@ -44,6 +44,23 @@ export interface DbStepLog {
   screenshot_path?: string;
 }
 
+export interface DbFolderAcceptanceDoc {
+  folder_path: string;
+  doc_title: string;
+  doc_web_path: string;
+  repo_relative_path: string;
+  updated_at: string;
+}
+
+export interface DbFolderAcceptanceDocHistory {
+  id: number;
+  folder_path: string;
+  user: string;
+  action: string;
+  summary: string;
+  time: string;
+}
+
 export interface DbTestCaseSphere {
   id: string; // e.g. "RECEL01" or "BRC-026"
   folder: string; // e.g. "br.com.grupocard.contacard.dev/Recarga de telefone"
@@ -72,6 +89,7 @@ export interface VirtualDatabase {
   test_specs?: DbTestSpec[]; // Make optional to prevent breaking any legacy parsed sessions gracefully
   test_cases_sphere?: DbTestCaseSphere[];
   test_folders?: string[];
+  folder_acceptance_docs?: DbFolderAcceptanceDoc[];
 }
 
 // Initial seed data — execuções vazias; novos runs reais preenchem via Terminal Ao Vivo.

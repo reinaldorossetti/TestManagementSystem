@@ -10,20 +10,23 @@ import {
 import { listTestSpecs } from '@/src/server/repositories/testSpecRepository';
 import { listSphereCases } from '@/src/server/repositories/testCaseSphereRepository';
 import { listFolders } from '@/src/server/repositories/folderRepository';
+import { listAcceptanceDocs } from '@/src/server/services/folderAcceptanceDocService';
 
 /**
  * Builds the full relational snapshot in the `VirtualDatabase` shape expected by
  * the frontend, aggregating every table in a single read.
  */
 export async function getSnapshot(): Promise<VirtualDatabase> {
-  const [executions, testCases, steps, testSpecs, sphereCases, folders] = await Promise.all([
-    listExecutions(),
-    listTestCases(),
-    listSteps(),
-    listTestSpecs(),
-    listSphereCases(),
-    listFolders(),
-  ]);
+  const [executions, testCases, steps, testSpecs, sphereCases, folders, acceptanceDocs] =
+    await Promise.all([
+      listExecutions(),
+      listTestCases(),
+      listSteps(),
+      listTestSpecs(),
+      listSphereCases(),
+      listFolders(),
+      listAcceptanceDocs(),
+    ]);
 
   return {
     executions,
@@ -32,6 +35,7 @@ export async function getSnapshot(): Promise<VirtualDatabase> {
     test_specs: testSpecs,
     test_cases_sphere: sphereCases,
     test_folders: folders,
+    folder_acceptance_docs: acceptanceDocs,
   };
 }
 
@@ -65,6 +69,8 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
     await tx.testCaseSphere.deleteMany();
     await tx.testSpec.deleteMany();
     await tx.testFolder.deleteMany();
+
+    await tx.folderAcceptanceDoc.deleteMany();
 
     for (const execution of db.executions) {
       const resultsFolder =
@@ -132,6 +138,18 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
 
     for (const folderPath of db.test_folders ?? []) {
       await tx.testFolder.create({ data: { path: folderPath } });
+    }
+
+    for (const doc of db.folder_acceptance_docs ?? []) {
+      await tx.folderAcceptanceDoc.create({
+        data: {
+          folderPath: doc.folder_path,
+          docTitle: doc.doc_title,
+          docWebPath: doc.doc_web_path,
+          repoRelativePath: doc.repo_relative_path,
+          updatedAt: doc.updated_at,
+        },
+      });
     }
 
     for (const sphereCase of db.test_cases_sphere ?? []) {

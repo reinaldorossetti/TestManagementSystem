@@ -7,7 +7,7 @@ Documentation     Feature: login_tests
 Library           Browser
 Suite Setup       Abrir o navegador no Swag Labs
 Suite Teardown    Fechar o navegador
-Test Tags         login_tests
+Test Tags         Login_Feature
 
 *** Variables ***
 ${URL}            https://www.saucedemo.com/

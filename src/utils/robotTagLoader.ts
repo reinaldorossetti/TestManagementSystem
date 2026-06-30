@@ -37,7 +37,7 @@ const pushTagsFromSeparatedList = (tags: string[], raw: string) => {
 /**
  * `Test Tags` na seção *** Settings *** (ex.: `Test Tags    login_tests`).
  */
-function extractSuiteTestTags(content: string): string[] {
+export function extractSuiteTestTags(content: string): string[] {
   const tags: string[] = [];
   const lines = content.split('\n');
   let inSettings = false;
@@ -126,4 +126,25 @@ export function buildExecutionTagsFromRobotTestTags(
   }
 
   return options;
+}
+
+/** Ex.: `login_tests` → `Login Tests`; `Login_Feature` → `Login Feature`. */
+export function formatTestTagAsFolderLabel(tag: string): string {
+  return normalizeExecutionTagValue(tag)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Nome de pasta TMS derivado do primeiro `Test Tags` do arquivo .robot.
+ * Fallback quando não houver suíte tag (ex.: import .feature).
+ */
+export function resolveRobotFolderLabel(content: string, fallback = 'Workspace Importados'): string {
+  const suiteTags = extractSuiteTestTags(content);
+  if (suiteTags.length > 0) {
+    return formatTestTagAsFolderLabel(suiteTags[0]);
+  }
+  return fallback;
 }

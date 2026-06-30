@@ -39,8 +39,8 @@ export class FeatureTms extends BasePage {
     return this.page.getByRole('heading', { level: 4, name });
   }
 
-  folderByName(name: string): Locator {
-    return this.page.getByText(name, { exact: true });
+  folderByName(name: string | RegExp): Locator {
+    return this.page.getByText(name, { exact: typeof name === 'string' });
   }
 
   get detailOverviewTab(): Locator {
@@ -69,5 +69,15 @@ export class FeatureTms extends BasePage {
 
   async selectCase(name: string): Promise<void> {
     await this.caseByName(name).click();
+  }
+
+  get importAcceptanceCriteriaButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /Importar Critérios de Aceite|Import Acceptance Criteria/,
+    });
+  }
+
+  get acceptanceCriteriaLink(): Locator {
+    return this.page.getByRole('link').filter({ hasText: /\.md$/ });
   }
 }

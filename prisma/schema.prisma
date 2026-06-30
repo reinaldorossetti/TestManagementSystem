@@ -81,6 +81,30 @@ model TestFolder {
   @@map("test_folders")
 }
 
+/// Acceptance criteria markdown shared by all test cases in a folder/feature.
+model FolderAcceptanceDoc {
+  folderPath       String @id @map("folder_path")
+  docTitle         String @map("doc_title")
+  docWebPath       String @map("doc_web_path")
+  repoRelativePath String @map("repo_relative_path")
+  updatedAt        String @map("updated_at")
+
+  @@map("folder_acceptance_docs")
+}
+
+/// Change history for an acceptance criteria document (per folder/feature).
+model FolderAcceptanceDocHistory {
+  id         Int    @id @default(autoincrement())
+  folderPath String @map("folder_path")
+  user       String @default("TMS")
+  action     String
+  summary    String @default("")
+  time       String
+
+  @@index([folderPath])
+  @@map("folder_acceptance_doc_history")
+}
+
 /// A rich, editable test case (Sphere-style) with history.
 model TestCaseSphere {
   id             String            @id

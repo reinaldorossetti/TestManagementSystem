@@ -4,6 +4,10 @@ import {
   FolderConflictError,
   FolderNotFoundError,
 } from '@/src/server/services/folderService';
+import {
+  AcceptanceDocNotFoundError,
+  AcceptanceDocValidationError,
+} from '@/src/server/services/folderAcceptanceDocService';
 
 /** Standard JSON success response. */
 export function ok<T>(data: T, status = 200): NextResponse {
@@ -60,6 +64,12 @@ export async function handleRoute(handler: () => Promise<NextResponse>): Promise
       return fail(error.message, 409);
     }
     if (error instanceof FolderNotFoundError) {
+      return fail(error.message, 404);
+    }
+    if (error instanceof AcceptanceDocValidationError) {
+      return fail(error.message, 400);
+    }
+    if (error instanceof AcceptanceDocNotFoundError) {
       return fail(error.message, 404);
     }
     const message = error instanceof Error ? error.message : 'Erro interno do servidor.';
