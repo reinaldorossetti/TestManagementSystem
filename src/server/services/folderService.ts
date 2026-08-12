@@ -8,6 +8,10 @@ import {
   removeAcceptanceDocForFolder,
   renameAcceptanceDocForFolder,
 } from '@/src/server/services/folderAcceptanceDocService';
+import {
+  removeFolderProjectForFolder,
+  renameFolderProjectForFolder,
+} from '@/src/server/services/folderProjectService';
 
 export class FolderConflictError extends Error {}
 export class FolderNotFoundError extends Error {}
@@ -62,6 +66,7 @@ export async function renameFolder(oldPath: string, newPath: string): Promise<vo
     }
 
     await renameAcceptanceDocForFolder(oldPath, newPath);
+    await renameFolderProjectForFolder(oldPath, newPath);
   });
 }
 
@@ -77,4 +82,5 @@ export async function deleteFolder(path: string): Promise<void> {
   });
 
   await removeAcceptanceDocForFolder(path);
+  await removeFolderProjectForFolder(path);
 }

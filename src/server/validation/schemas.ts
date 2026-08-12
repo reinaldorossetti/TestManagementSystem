@@ -124,6 +124,19 @@ export const folderDeleteSchema = z.object({
   path: z.string().min(1),
 });
 
+const projectSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  details: z.string().nullable().optional(),
+  platform: z.enum(['Web', 'Mobile', 'Desktop']).nullable().optional(),
+  created_at: z.string().min(1),
+});
+
+const folderProjectSchema = z.object({
+  folder_path: z.string().min(1),
+  project_id: z.string().min(1),
+});
+
 export const testCaseEvidenceLinkSchema = z.object({
   url: z.string().url(),
   title: z.string().optional(),
@@ -178,6 +191,8 @@ export const virtualDatabaseSchema = z.object({
   test_cases_sphere: z.array(sphereFullSchema).optional(),
   test_folders: z.array(z.string()).optional(),
   folder_acceptance_docs: z.array(folderAcceptanceDocSchema).optional(),
+  projects: z.array(projectSchema).optional(),
+  folder_projects: z.array(folderProjectSchema).optional(),
 });
 
 export type VirtualDatabaseInput = z.infer<typeof virtualDatabaseSchema>;

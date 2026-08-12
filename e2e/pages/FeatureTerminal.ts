@@ -7,13 +7,13 @@ import { BasePage } from './BasePage';
  */
 export class FeatureTerminal extends BasePage {
   get robotArgumentsHeading(): Locator {
-    return this.page.getByRole('heading', {
+    return this.page.getByTestId('terminal-robot-arguments-panel').getByRole('heading', {
       name: /Argumentos do Robot Framework|Robot Framework Arguments/,
     });
   }
 
   get executeFeatureButton(): Locator {
-    return this.page.getByRole('button', { name: /Executar Feature|Execute Feature/ });
+    return this.page.getByTestId('terminal-execute-feature-button');
   }
 
   async open(): Promise<void> {

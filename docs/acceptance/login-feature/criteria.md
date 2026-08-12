@@ -10,7 +10,7 @@
 ## Upload e estado
 
 - Novo arquivo `.feature`/`.robot`/`.txt` → limpa cenários anteriores da workspace.
-- Tags de execução no Terminal vêm de **`robot-sample/`** e `.robot` importado — não de `@` do Gherkin.
+- Tags de execução no Terminal vêm de **`test_projects/`** e `.robot` importado — não de `@` do Gherkin.
 - Modal **Configurar tag**: recarrega da API; delete com `setExecutionTags(prev => ...)`.
 
 ## Execução (100% real)
@@ -19,13 +19,13 @@
 |-------|--------|
 | Execução (cartão) | Um cenário por tag → `handleRunFeatureReal(tag)` |
 | Executar Feature | Tag ativa no dropdown → `handleRunFeatureReal()` |
-| Live Terminal — Run All | `python -m robot robot-sample/` |
+| Live Terminal — Run All | `python -m robot test_projects/` |
 | Reporte | Navega para `/reports` |
 
 Comandos exemplo:
 ```bash
-python -m robot -i login_tests robot-sample/login_tests.robot
-python -m robot -i LT06 robot-sample/login_tests.robot
+python -m robot -i login_tests test_projects/login_tests.robot
+python -m robot -i LT06 test_projects/login_tests.robot
 ```
 
 Persistência: `results_folder`, `report_screenshot_path`, `screenshot_path` nos steps.

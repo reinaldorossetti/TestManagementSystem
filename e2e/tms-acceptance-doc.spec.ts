@@ -9,7 +9,7 @@ test.describe('TMS acceptance criteria import', () => {
     await tms.open();
 
     const folderName = 'Recarga de telefone';
-    await tms.folderByName(folderName).click();
+    await tms.folderByName(folderName).first().click();
     await expect(tms.importAcceptanceCriteriaButton).toBeEnabled();
 
     const fixturePath = path.join(
@@ -31,7 +31,7 @@ test.describe('TMS acceptance criteria import', () => {
     expect(href).toMatch(/\/tms\/docs\/acceptance\/recarga-de-telefone$/);
 
     const docPage = await page.context().newPage();
-    await docPage.goto(href!);
+    await docPage.goto(new URL(href!, page.url()).toString());
     await expect(docPage.getByRole('heading', { name: folderName })).toBeVisible();
     await expect(docPage.getByText('Validar o fluxo de autenticação')).toBeVisible();
     await docPage.close();

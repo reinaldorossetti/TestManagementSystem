@@ -2,9 +2,20 @@ export type ExecutionTagOption = {
   value: string;
   label: string;
   sourceFile?: string;
+  /** Pasta do projeto em `test_projects/` de onde a tag foi extraída (`''` = raiz). */
+  sourceFolder?: string;
+  /** Indica que a tag foi declarada na diretiva `Test Tags` da suíte Robot. */
+  isSuiteTestTag?: boolean;
 };
 
-export type RobotTestTagEntry = { tag: string; sourceFile?: string };
+export type RobotTestTagEntry = {
+  tag: string;
+  sourceFile?: string;
+  /** Pasta do projeto em `test_projects/` de onde o arquivo `.robot` foi lido (`''` = raiz). */
+  sourceFolder?: string;
+  /** Indica que a tag foi declarada na diretiva `Test Tags` da suíte Robot. */
+  isSuiteTestTag?: boolean;
+};
 
 /** Normaliza chave do dropdown / `-i` (sem @, sem espaços). */
 export function normalizeExecutionTagValue(tag: string): string {
@@ -78,6 +89,63 @@ export function extractSuiteTestTags(content: string): string[] {
 }
 
 /**
+ * `Force Tags` na seção *** Settings ***. Esses valores identificam a pasta
+ * funcional usada pelo TMS ao armazenar os casos importados.
+ */
+export function extractForceTags(content: string): string[] {
+  const tags: string[] = [];
+  const lines = content.split('\n');
+  let inSettings = false;
+  let readingForceTags = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\*\*\*\s*Settings\s*\*\*\*/i.test(trimmed)) {
+      inSettings = true;
+      readingForceTags = false;
+      continue;
+    }
+    if (/^\*\*\*/.test(trimmed)) {
+      inSettings = false;
+      readingForceTags = false;
+      continue;
+    }
+    if (!inSettings) continue;
+
+    const forceTagsMatch = trimmed.match(/^Force Tags\s+(.+)$/i);
+    if (forceTagsMatch) {
+      readingForceTags = true;
+      pushTagsFromSeparatedList(tags, forceTagsMatch[1]);
+      continue;
+    }
+
+    if (readingForceTags && trimmed.startsWith('...')) {
+      pushTagsFromSeparatedList(tags, trimmed.replace(/^\.\.\.\s*/, ''));
+      continue;
+    }
+
+    if (readingForceTags && trimmed && !trimmed.startsWith('...')) {
+      readingForceTags = false;
+    }
+  }
+
+  return tags;
+}
+
+/**
+ * Tags que representam a suíte para execução de feature. Ambas as diretivas
+ * Robot são aceitas: `Test Tags` e `Force Tags`. A ordem preserva primeiro
+ * `Test Tags` e depois `Force Tags`, removendo duplicidades.
+ */
+export function extractSuiteExecutionTags(content: string): string[] {
+  const tags: string[] = [];
+  for (const tag of [...extractSuiteTestTags(content), ...extractForceTags(content)]) {
+    pushUniqueTag(tags, tag);
+  }
+  return tags;
+}
+
+/**
  * `[Tags]` em casos de teste (ex.: `[Tags]    LT06`).
  */
 function extractTestCaseTags(content: string): string[] {
@@ -93,11 +161,12 @@ function extractTestCaseTags(content: string): string[] {
 }
 
 /**
- * Tags Robot para execução: `Test Tags` (suíte) + `[Tags]` (cenários), na ordem do arquivo.
+ * Tags Robot para execução: tags de suíte (`Test Tags` e `Force Tags`) +
+ * `[Tags]` (cenários), na ordem de prioridade da suíte.
  */
 export function extractRobotExecutionTags(content: string): string[] {
   const tags: string[] = [];
-  for (const tag of extractSuiteTestTags(content)) {
+  for (const tag of extractSuiteExecutionTags(content)) {
     pushUniqueTag(tags, tag);
   }
   for (const tag of extractTestCaseTags(content)) {
@@ -117,12 +186,13 @@ export function buildExecutionTagsFromRobotTestTags(
   const options: ExecutionTagOption[] = [];
   const seen = new Set<string>();
 
-  for (const { tag, sourceFile } of entries) {
+  for (const { tag, sourceFile, sourceFolder, isSuiteTestTag } of entries) {
     const value = normalizeExecutionTagValue(tag);
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
+    const seenKey = JSON.stringify([sourceFolder ?? '', value]);
+    if (!value || seen.has(seenKey)) continue;
+    seen.add(seenKey);
     const label = sourceFile ? `@${value} (${sourceFile})` : `@${value}`;
-    options.push({ value, label, sourceFile });
+    options.push({ value, label, sourceFile, sourceFolder, isSuiteTestTag });
   }
 
   return options;
@@ -138,13 +208,55 @@ export function formatTestTagAsFolderLabel(tag: string): string {
 }
 
 /**
- * Nome de pasta TMS derivado do primeiro `Test Tags` do arquivo .robot.
- * Fallback quando não houver suíte tag (ex.: import .feature).
+ * Nome de pasta TMS derivado do primeiro `Force Tags` do arquivo .robot.
+ * O valor é convertido para um nome amigável (`adicionar_tests` →
+ * `Adicionar Tests`). `Test Tags` é usado como fallback quando não houver
+ * `Force Tags`; por fim, usa-se o fallback recebido (ex.: import .feature).
  */
 export function resolveRobotFolderLabel(content: string, fallback = 'Workspace Importados'): string {
+  const forceTags = extractForceTags(content);
+  if (forceTags.length > 0) {
+    return formatTestTagAsFolderLabel(forceTags[0]);
+  }
+
   const suiteTags = extractSuiteTestTags(content);
   if (suiteTags.length > 0) {
     return formatTestTagAsFolderLabel(suiteTags[0]);
   }
   return fallback;
+}
+
+/** Projeto derivado de uma pasta dentro de `test_projects/`. */
+export type RobotProjectOption = {
+  /** Caminho da pasta do projeto relativo a `test_projects/` (`''` = raiz). */
+  folder: string;
+  /** Nome de exibição do projeto (ex.: `Login Tests`). */
+  name: string;
+  /** Rótulo completo do dropdown (ex.: `Login Tests (test_projects/login_tests/)`). */
+  label: string;
+};
+
+/**
+ * Agrupa as `ExecutionTagOption` pela pasta de origem, projetando a lista de
+ * "projetos" existentes em `test_projects/` (um projeto por pasta, não por
+ * arquivo `.robot` individual — vários arquivos na mesma pasta pertencem ao
+ * mesmo projeto).
+ */
+export function buildProjectOptionsFromExecutionTags(
+  tags: ExecutionTagOption[],
+): RobotProjectOption[] {
+  const projects: RobotProjectOption[] = [];
+  const seen = new Set<string>();
+
+  for (const tag of tags) {
+    const folder = tag.sourceFolder ?? '';
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    const baseName = folder !== '' ? folder : (tag.sourceFile?.replace(/\.robot$/i, '') ?? '');
+    const name = formatTestTagAsFolderLabel(baseName) || baseName || 'Test Projects';
+    const path = folder ? `test_projects/${folder}/` : 'test_projects/';
+    projects.push({ folder, name, label: `${name} (${path})` });
+  }
+
+  return projects;
 }

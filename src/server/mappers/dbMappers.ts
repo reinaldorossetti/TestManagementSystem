@@ -29,6 +29,7 @@ export function toDbExecution(row: PrismaExecution): DbExecution {
     total_tests: row.totalTests,
     passed: row.passed,
     failed: row.failed,
+    skipped: row.skipped,
     status: row.status as DbExecution['status'],
     results_path: row.resultsPath,
     results_folder: row.resultsFolder ?? undefined,

@@ -20,17 +20,28 @@ O carregador dinâmico de características (`src/utils/featureLoader.ts`) foi pe
 
 3. **Mapeamento de Metadados e Tags**:
    - Extração automática de metadados declarados nas diretivas `[Tags]` e `[Documentation]` no parser Gherkin/Robot (`featureLoader.ts`).
-   - **Tags de execução no Terminal** (dropdown `-i` / modal **Configurar tag**) vêm **exclusivamente** dos arquivos `.robot` em `robot-sample/`, via `src/utils/robotTagLoader.ts` e API `GET /api/terminal/robot-tags`:
+   - **Tags de execução no Terminal** (dropdown `-i` / modal **Configurar tag**) vêm **exclusivamente** dos arquivos `.robot` em `test_projects/`, via `src/utils/robotTagLoader.ts` e API `GET /api/terminal/robot-tags`:
      - `Test Tags` na seção `*** Settings ***` (ex.: `login_tests` em `login_tests.robot`).
      - `[Tags]` em cada caso de teste (ex.: `LT01` … `LT06`).
+   - Ao usar **Armazenar Testes** no Workspace, o nome da pasta TMS é derivado prioritariamente do primeiro `Force Tags` em `*** Settings ***` e convertido para um nome legível (ex.: `Force Tags    adicionar_tests` → pasta `Adicionar Tests`). Se não houver `Force Tags`, usa o primeiro `Test Tags`; sem nenhuma das duas diretivas, mantém `Workspace Importados`.
+   - **Escopo obrigatório de `Force Tags`**: `Force Tags` é metadado de suíte/pasta e também uma tag válida de execução (`-i`) quando a feature selecionada pertencer ao arquivo que a declarou. Não deve aparecer como tag de caso de teste nem contaminar o identificador visual dos cards (badge do caso deve refletir a tag do cenário, como `[Tags]`/`@`, ou o ID normalizado do caso).
+   - **Escopo obrigatório de `Test Tags`**: `Test Tags` em `*** Settings ***` é metadado de suíte/execução (filtro `-i`) e não deve ser persistido/exibido como tag de caso de teste no TMS. No badge do caso, exibir apenas tag do cenário (`[Tags]`/`@`) ou ID normalizado do teste (ex.: `TC-01`).
+   - **Regra visual dos cards TMS**: os cards/lista de cenários devem exibir somente a tag ou o ID do teste e o título do cenário. O nome da pasta/feature (`tc.folder`) não deve aparecer no card nem ser concatenado ao badge do caso.
+   - **Regra visual da Execução Manual**: quando o ID persistido possuir prefixo técnico de feature (ex.: `ADICIONAR-DINHEIRO-VIA-BOLETO-TC-01`), o modal deve exibir os dados em duas partes separadas: `Feature: ADICIONAR-DINHEIRO-VIA-BOLETO` e, em outra linha, `TC-01 - Cenario de Teste Positivo - <título>`. Nunca exibir o prefixo técnico completo junto do identificador e do título do cenário.
+   - **Regra de evidência na Execução Manual**: o modal deve oferecer o mesmo anexo da aba **Evidências**, com alternância entre **Arquivo** (imagem/vídeo) e **Link** (URL e título opcional). O link deve possuir ação explícita **Salvar link** e usar o mesmo endpoint de evidências do TMS.
    - A tag fictícia `@all_scenarios (Suite Completa)` foi **removida**; não existe no Robot Framework real.
-   - Ao abrir **Configurar tag**, a lista é **recarregada e limpa** a partir de `robot-sample/` (tags manuais antigas são substituídas).
-   - Upload de `.robot` atualiza as tags a partir do `Test Tags` / `[Tags]` do arquivo; salvar `.feature` ou carregar spec **não** altera mais a lista de tags de execução.
+   - Ao abrir **Configurar tag**, a lista é **recarregada e limpa** a partir de `test_projects/` (tags manuais antigas são substituídas).
+   - Upload de `.robot` atualiza as tags a partir do `Test Tags`, `Force Tags` e `[Tags]` do arquivo; salvar `.feature` ou carregar spec **não** altera mais a lista de tags de execução.
    - Exclusão de tags no modal usa atualização funcional de estado (`setExecutionTags(prev => ...)`); qualquer tag pode ser removida.
 
 4. **Identificação Dinâmica de Passos (BDD e Keywords Robot)**:
    - Identificação precisa de passos iniciados com keywords BDD tradicionais (`Dado`, `E`, `Quando`, `Então`, `Mas`, `Given`, `When`, `Then`, `And`, `But`).
    - Identificação de ações puras recuadas com espaços ou tabulações, mapeando-as de forma segura como passos auxiliares adicionais (`AND`).
+
+5. **Parser dedicado para suítes Robot**:
+   - Arquivos Robot com a seção `*** Test Cases ***` ou `*** Tasks ***` devem ser processados por `parseRobotGherkinFeature()`.
+   - O parser dedicado usa a seção Robot e a indentação para separar casos, preservando testes com nomes não numéricos e sem alterar o parser legado `parseGherkinFeature()` para arquivos Gherkin comuns.
+   - Keywords de `*** Keywords ***`, configurações `[Setup]`, `[Teardown]`, `[Template]` e `[Timeout]` não devem virar cenários ou passos de negócio indevidos.
 
 ---
 
@@ -43,12 +54,16 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
    - A lista de tags de execução **não** é mais reconstruída a partir de tags `@` do Gherkin ao importar `.feature`; somente arquivos `.robot` importados atualizam o seletor de tags.
 
 2. **Auto-seleção de Tags**:
-   - Ao carregar a página ou abrir **Configurar tag**, o sistema sincroniza tags de `robot-sample/` e auto-seleciona a primeira tag Robot encontrada (ex.: `login_tests`).
-   - Se nenhuma tag existir em `robot-sample/`, o seletor fica vazio até o operador adicionar uma tag manualmente no modal.
+   - Ao carregar a página ou abrir **Configurar tag**, o sistema sincroniza tags de `test_projects/` e auto-seleciona a primeira tag Robot encontrada (ex.: `login_tests`).
+   - Se nenhuma tag existir em `test_projects/`, o seletor fica vazio até o operador adicionar uma tag manualmente no modal.
 
 3. **Status de Execução Inicial**:
    - Ao importar ou salvar uma nova especificação `.feature` (ou arquivo `.robot`, `.txt`), o status de execução de cada cenário é inicializado estritamente como **`Not executed`**, tendo em vista que os mesmos ainda não foram processados.
    - Esse status neutro permanecerá visível em cada cartão até que uma execução pontual de teste ("Execução") ou a execução completa ("Executar Feature") seja efetivada, momento em que o status será atualizado dinamicamente para os resultados de tempo de execução real (**`PASS`**, **`FAIL`** de erro ou **`SKIP`**).
+
+4. **Cardinalidade durante o armazenamento**:
+   - A importação deve preservar todos os cenários válidos da suíte Robot. A suíte local `cadastro_tests.robot` deve manter os 17 casos atuais no Workspace e no TMS.
+   - Títulos de prosa repetidos não identificam sozinhos um caso: quando houver tags/IDs diferentes, não mesclar os casos. A reconciliação deve priorizar o ID estável e só usar título normalizado quando houver uma correspondência única.
 
 ---
 
@@ -56,23 +71,61 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
 
 O painel **Terminal** (`/terminal`) executa testes **reais** do Robot Framework na máquina local via APIs (`/api/terminal/run`, `/api/terminal/output`). Não há mais execução simulada.
 
+### 🐍 Dependências e Bibliotecas Python Obrigatórias
+
+Para executar os testes do Robot Framework localmente, o ambiente Python da máquina deve possuir os seguintes pacotes instalados:
+
+1. **`robotframework`** (v7.4+): Motor de execução do Robot Framework e suporte a BDD.
+2. **`robotframework-browser`**: Biblioteca de automação web baseada em Playwright para Robot Framework.
+3. **`robotframework-requests`**: Biblioteca para testes de APIs e requisições HTTP.
+
+#### Comando de Instalação (Python e Playwright):
+- **Linux / macOS**:
+  ```bash
+  # 1. Instalar pacotes Python (Robot Framework & bibliotecas)
+  python3 -m pip install --user --break-system-packages robotframework robotframework-browser robotframework-requests
+
+  # 2. Inicializar o Playwright para a biblioteca Robot Framework Browser (Node.js & binaries do browser)
+  rfbrowser init
+
+  # 3. Caso faltem dependências do sistema operacional Linux para os navegadores Playwright:
+  npx playwright install-deps
+  ```
+- **Windows**:
+  ```bash
+  # 1. Instalar pacotes Python (Robot Framework & bibliotecas)
+  python -m pip install robotframework robotframework-browser robotframework-requests
+
+  # 2. Inicializar o Playwright para a biblioteca Robot Framework Browser (Node.js & binaries do browser)
+  rfbrowser init
+
+  # 3. Instalar navegadores Playwright do Node.js (se executando E2E):
+  npx playwright install
+  ```
+
 ### Pontos de entrada (todos reais)
 
 | Ação | Implementação | Persistência |
 |------|---------------|--------------|
 | **Executar Feature** (cabeçalho) | `handleRunFeatureReal()` → `robotRunner.ts` | `results/<RUN-...>/` + SQLite |
 | **Execução** (cartão único na workspace) | `handleRunFeatureReal(tagDoCenário)` — filtra por tag `[Tags]` | Idem |
+| **Executar Teste Automatizado** (detalhe TMS) | `handleRunSingleTestCaseReal(currentCase)` — filtra somente o caso selecionado | Idem |
+| **Executar Testes** (lista TMS) | `handleLoadMultipleTestCasesToWorkspace(folderCases)` — conjunto da pasta/feature | Idem |
 | **Terminal Ao Vivo** — *Executar Todos os Testes* | `LiveTerminal.tsx` → `/api/terminal/run` | Idem |
 | **Executar Feature** em Reports | `handleRunFeatureReal()` | Idem |
 
 ### Comandos Robot por contexto
 
-- **Terminal Ao Vivo — suíte completa**: `python -m robot robot-sample/` (`ROBOT_RUN_ALL_COMMAND`).
-- **Executar Feature** / **Execução** — filtrado pela tag (`buildFeatureRobotCommand()` em `robotCommands.ts`):
-  - `login_tests` → `python -m robot -i login_tests robot-sample/login_tests.robot`
-  - `LT06` (ou outra `[Tags]`) → `python -m robot -i LT06 robot-sample/login_tests.robot`
-  - Tag genérica → `python -m robot -i <tag> robot-sample/<arquivo.robot>`
-- O **Comando Final Compilado** no painel lateral usa o mesmo `buildFeatureRobotCommand()` com o `sourceFile` da tag selecionada.
+- **Terminal Ao Vivo — suíte completa**: `python -m robot test_projects/` (`ROBOT_RUN_ALL_COMMAND`).
+- **Executar Feature** / **Executar Testes** — filtrado pela tag de suíte `Test Tags` ou `Force Tags` do arquivo selecionado (`buildFeatureRobotCommand()` em `robotCommands.ts`):
+   - `adicionar_dinheiro_via_boleto` → `python -m robot --outputdir "results/robot_framework/" -A project_args_file.txt --timestampoutputs -i adicionar_dinheiro_via_boleto ./`
+   - O comando usa `./`; o backend recebe `workingDirectory` com a pasta de origem em `test_projects/` para resolver argumentos e recursos relativos.
+   - `[Tags]` do cenário são usadas para o botão singular e para localizar o arquivo da feature; nunca substituem a tag de suíte (`Test Tags` ou `Force Tags`) na execução de feature.
+- **Executar Teste Automatizado** no detalhe TMS — usa `buildSingleTestRobotCommand()` e `--include`:
+   - `CT01` → `python -m robot --include CT01 ./`
+   - A tag é extraída das precondições/tag real do caso selecionado, nunca do `filterTag` global.
+   - `sourceFolder` é resolvido pelo metadado da tag em `/api/terminal/robot-tags` e enviado ao backend como `workingDirectory`; `''` explícito significa a raiz `test_projects/` e não deve cair para uma seleção antiga.
+- O **Comando Final Compilado** no painel lateral continua usando `buildFeatureRobotCommand()` e `-i` para execução de feature/suíte.
 
 ### Fluxo de execução real (`handleRunFeatureReal`)
 
@@ -80,7 +133,12 @@ O painel **Terminal** (`/terminal`) executa testes **reais** do Robot Framework 
 2. `POST /api/terminal/run` com streaming de stdout no console.
 3. `POST /api/terminal/output` — parse de `output.xml`, captura de `report.html` / `log.html` por cenário, persistência em `executions` / `test_cases` / `steps`.
 4. Campos enriquecidos: `results_folder`, `report_screenshot_path`, `screenshot_path` (passos), `robot_test_id`.
-5. Parâmetro opcional `tagOverride` permite execução focada em um cenário (botão **Execução** no cartão da workspace).
+5. Parâmetro opcional `tagOverride` permite execução focada em um cenário no Workspace; a execução singular do TMS fornece também o comando e `sourceFolder` específicos para não herdar a tag global.
+6. O fim do stream libera a UI imediatamente. `output.xml` é persistido em transação no SQLite pelo endpoint `/api/terminal/output`; captura de `report.html`/`log.html` é complementar e não pode impedir a criação do relatório.
+7. **Cancelar Execução** chama `/api/terminal/cancel` por `runId` e encerra a árvore Robot/Python no Windows.
+8. Os terminais exibem **Total de Testes**, **Sucesso** e **Falhas** em tempo real; o resumo final do Robot corrige os totais.
+9. **Repositório de Relatórios Robot** é configurável em **Configurações**, persistido no SQLite e usa `results/` como padrão. O campo aceita somente um caminho relativo ao projeto (ex.: `results/robot_framework/`) e cria a pasta física ao salvar. `%ROBOT_HOME%` não é uma variável do sistema; valores legados com esse placeholder são migrados para o caminho relativo equivalente. O backend injeta `--outputdir <diretório>/<RUN-...>` em toda execução Robot para preservar os artefatos de cada run.
+   - O painel mostra também o caminho físico resolvido. Após uma run, `results_path` absoluto é canônico para Reports, PDF e evidências; alterações posteriores na configuração não devem redirecionar nem quebrar execuções já gravadas.
 
 ### Botões no cabeçalho do Terminal
 
@@ -96,15 +154,15 @@ O painel **Terminal** (`/terminal`) executa testes **reais** do Robot Framework 
 
 Painel xterm.js — execução real local:
 
-1. **Executar Todos os Testes**: `python -m robot robot-sample/`.
+1. **Executar Todos os Testes**: `python -m robot test_projects/`.
 2. Streaming via `POST /api/terminal/run`; persistência opcional (`persist: true`) com callback `onPersisted`.
 3. Após o run: `POST /api/terminal/output` — mesmo pipeline de parse e evidências que **Executar Feature**.
 4. Diferença: Terminal Ao Vivo usa comando de **suíte completa**; o cabeçalho filtra pela **tag selecionada** (`-i`).
 
 ### Painel lateral — Argumentos do Robot Framework
 
-1. **Tag de Execução (-i)**: dropdown alimentado por `executionTags` (Robot `Test Tags` + `[Tags]`).
-2. **Configurar tag**: modal de gestão; ao abrir, recarrega tags de `robot-sample/` via API.
+1. **Tag de Execução (-i)**: dropdown alimentado por `executionTags` (Robot `Test Tags`, `Force Tags` e `[Tags]`).
+2. **Configurar tag**: modal de gestão; ao abrir, recarrega tags de `test_projects/` via API.
 3. **Comando Final Compilado**: preview de `buildFeatureRobotCommand(filterTag, sourceFile)`.
 
 ### Arquivos-chave do Terminal
@@ -114,11 +172,12 @@ Painel xterm.js — execução real local:
 | `src/App.tsx` | `handleRunFeatureReal`, botões Reporte/Executar Feature, modal de tags |
 | `src/components/LiveTerminal.tsx` | xterm, run all, persistência |
 | `src/utils/robotRunner.ts` | Streaming + `persistRobotRunOutput` |
-| `src/utils/robotCommands.ts` | `buildFeatureRobotCommand`, constantes de comando |
+| `src/utils/robotCommands.ts` | `buildFeatureRobotCommand`, `buildSingleTestRobotCommand` e constantes de comando |
 | `src/utils/robotTagLoader.ts` | `extractRobotExecutionTags`, `buildExecutionTagsFromRobotTestTags` |
 | `app/api/terminal/run/route.ts` | Execução local do Robot |
 | `app/api/terminal/output/route.ts` | Parse `output.xml` + captura de relatórios |
-| `app/api/terminal/robot-tags/route.ts` | Lista tags de `robot-sample/*.robot` |
+| `app/api/terminal/cancel/route.ts` | Cancelamento explícito de execução por `runId` |
+| `app/api/terminal/robot-tags/route.ts` | Lista tags de `test_projects/*.robot` |
 
 ### Botão "Execução" (cenário único na workspace)
 
@@ -134,7 +193,9 @@ Na tela do **Sistema de Gestão de Testes (TMS)** existem dois botões de execu�
 1. **Botão "Executar Teste Automatizado" (SINGULAR = um único teste)**:
    - Localizado no rodapé do **painel de detalhes do caso de teste selecionado** (lado direito).
    - Executa **somente o teste selecionado** (o caso aberto no detalhe), e nenhum outro.
-   - Implementado por `handleLoadTestCaseToWorkspace(currentCase.id)` em `src/App.tsx`.
+   - Implementado por `handleRunSingleTestCaseReal(currentCase)` em `src/App.tsx`.
+   - Extrai a tag Robot real do caso, resolve a pasta por `sourceFolder` e executa com `buildSingleTestRobotCommand()` (`--include`).
+   - Não usa o `filterTag` global, que pode conter uma tag de suíte como `cadastro_onboarding`.
    - ⚠️ **Não alterar** o escopo deste botão para múltiplos casos. Singular = unitário.
 
 2. **Botão "Executar Testes" (PLURAL = todos os testes da feature)**:
@@ -144,6 +205,11 @@ Na tela do **Sistema de Gestão de Testes (TMS)** existem dois botões de execu�
    - Implementado por `handleLoadMultipleTestCasesToWorkspace(folderCases)` em `src/App.tsx`.
 
 > Mnemônico: **singular ("Teste") = um só (o selecionado)**; **plural ("Testes") = todos (da feature)**. Qualquer alteração futura deve preservar essa regra e ficar restrita ao botão correspondente, sem afetar o outro.
+
+### Ordenação visual dos casos TMS
+
+- Os cards/listas de casos devem ser ordenados por `getSphereCaseBadgeValue()` usando comparação numérica (`RECEL01`, `RECEL02`, ..., `RECEL16`), e não pela ordem acidental do banco.
+- Em caso de empate visual, usar o ID persistido como desempate estável.
 
 ---
 
@@ -259,7 +325,7 @@ A área de **Relatórios de Execução** (`src/components/ExecutionReports.tsx`,
 ### Tela Reports (`/reports`)
 
 1. **Rota e navegação**:
-   - Rota dedicada **`/reports`** (App Router); `middleware.ts` redireciona `/` e `/?tab=reports` para `/reports`.
+   - Rota dedicada **`/reports`** (App Router); `proxy.ts` redireciona `/` e `/?tab=reports` para `/reports`.
    - Botão **Reporte / Report** no cabeçalho do Terminal leva a esta rota.
 
 2. **Listagem de execuções**:
@@ -277,6 +343,11 @@ A área de **Relatórios de Execução** (`src/components/ExecutionReports.tsx`,
 4. **Identidade visual**:
    - Removido definitivamente **"ALLURE 3 DEMO PORTAL"**.
    - Foco: **`Feature: <nome_da_feature>`** (sem prefixo `@`).
+
+5. **Recuperação de relatório Robot**:
+   - O botão **Ler último relatório Robot** encontra o `output.xml` mais recente no diretório configurado (ex.: `results/robot_framework/`), com varredura recursiva em subpastas e fallback de compatibilidade para `results/` quando o configurado estiver vazio.
+   - A persistência registra o caminho físico absoluto em `results_path` e a pasta da run em `results_folder`, preservando a resolução de evidências e PDF.
+   - A recuperação é idempotente e não depende de uma aba Terminal ainda aberta.
 
 ### Exportação PDF (`handleExportExecutionReportToPDF`)
 

@@ -1,13 +1,17 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Square, Eraser, TerminalSquare, Trash2 } from 'lucide-react';
+import { CheckCircle2, Play, Square, Eraser, TerminalSquare, Trash2, XCircle } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { createTranslator, type Language } from '../utils/i18n';
 import { ROBOT_RUN_ALL_COMMAND } from '../utils/robotCommands';
 import { buildRunFolderName } from '../utils/robotResultsFolder';
+import {
+  INITIAL_ROBOT_EXECUTION_PROGRESS,
+  updateRobotExecutionProgress,
+} from '../utils/robotExecutionProgress';
 import type { DbExecution, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
 
 export interface ParsedRunResult {
@@ -48,6 +52,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
   const [command, setCommand] = useState<string>(initialCommand ?? DEFAULT_COMMAND);
   const [isRunning, setIsRunning] = useState(false);
   const [persist, setPersist] = useState(true);
+  const [executionProgress, setExecutionProgress] = useState(INITIAL_ROBOT_EXECUTION_PROGRESS);
 
   // Inicializa o terminal uma única vez.
   useEffect(() => {
@@ -117,10 +122,12 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
     const controller = new AbortController();
     abortRef.current = controller;
     setIsRunning(true);
+    setExecutionProgress(INITIAL_ROBOT_EXECUTION_PROGRESS);
 
     const timestamp = formatTimestamp();
     const runFolder = buildRunFolderName(timestamp);
     let aborted = false;
+    let outputBuffer = '';
 
     term.writeln(`\x1b[1;33m$ ${cmd}\x1b[0m`);
 
@@ -143,7 +150,19 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        term.write(decoder.decode(value, { stream: true }));
+        const chunk = decoder.decode(value, { stream: true });
+        term.write(chunk);
+        outputBuffer += chunk;
+        const lines = outputBuffer.split(/\r?\n/);
+        outputBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          setExecutionProgress((current) => updateRobotExecutionProgress(current, line));
+        }
+      }
+      if (outputBuffer.trim()) {
+        setExecutionProgress((current) =>
+          updateRobotExecutionProgress(current, outputBuffer.trim()),
+        );
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
@@ -170,6 +189,12 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
           term.writeln(`\x1b[90m[TMS] Sem persistência: ${data?.error ?? res.statusText}\x1b[0m`);
         } else {
           const parsed = data as ParsedRunResult;
+          setExecutionProgress({
+            total: parsed.execution.total_tests,
+            passed: parsed.execution.passed,
+            failed: parsed.execution.failed,
+            isFinal: true,
+          });
           term.writeln(
             `\x1b[1;32m[TMS] Execução registrada: ${parsed.execution.id} — ` +
               `${parsed.execution.total_tests} testes (${parsed.execution.passed} ok, ${parsed.execution.failed} falhas).\x1b[0m`,
@@ -196,7 +221,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
   }, []);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-2xl">
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-2xl" data-testid="terminal-live-terminal">
       {/* Header */}
       <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
@@ -211,16 +236,41 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
         )}
       </div>
 
+      <div className="grid grid-cols-1 gap-2 border-b border-slate-800 bg-slate-950/40 px-4 py-3 md:grid-cols-3" data-testid="live-terminal-test-summary">
+        <div className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2">
+          <TerminalSquare className="h-5 w-5 shrink-0 text-sky-400" />
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('Total de Testes', 'Total Tests')}</p>
+            <p className="text-2xl font-black leading-none text-sky-400" data-testid="live-terminal-total-count">{executionProgress.total}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('Sucesso', 'Passed')}</p>
+            <p className="text-2xl font-black leading-none text-emerald-400" data-testid="live-terminal-passed-count">{executionProgress.passed}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2">
+          <XCircle className="h-5 w-5 shrink-0 text-rose-400" />
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('Falhas', 'Failed')}</p>
+            <p className="text-2xl font-black leading-none text-rose-400" data-testid="live-terminal-failed-count">{executionProgress.failed}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Quick actions */}
       <div className="bg-slate-950/40 px-4 py-2.5 border-b border-slate-800 flex items-center gap-2 flex-wrap">
         <button
           type="button"
           disabled={isRunning}
           onClick={() => runCommand(ROBOT_RUN_ALL_COMMAND)}
+          data-testid="terminal-run-all-button"
           className="flex items-center gap-1.5 bg-[#FF6600]/10 hover:bg-[#FF6600]/20 text-[#FF6600] font-black text-[10px] uppercase tracking-wide px-3 py-1.5 rounded-lg border border-[#FF6600]/30 hover:border-[#FF6600] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           title={t(
-            'Executa todas as suítes Robot em robot-sample/ (login_tests + tms)',
-            'Runs all Robot suites in robot-sample/ (login_tests + tms)',
+            'Executa todas as suítes Robot em test_projects/ (login_tests + tms)',
+            'Runs all Robot suites in test_projects/ (login_tests + tms)',
           )}
         >
           <Play className="w-3 h-3 fill-current" />
@@ -234,6 +284,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
             type="button"
             disabled={isRunning}
             onClick={onClearExecutions}
+            data-testid="terminal-clear-executions-button"
             className="ml-auto flex items-center gap-1.5 text-slate-400 hover:text-rose-400 font-bold text-[10px] uppercase px-2.5 py-1.5 rounded-lg border border-slate-800 hover:border-rose-500/40 transition-all cursor-pointer disabled:opacity-50"
             title={t('Zerar histórico de execuções', 'Clear execution history')}
           >
@@ -256,12 +307,14 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
           disabled={isRunning}
           placeholder={t('Digite o comando e pressione Enter…', 'Type the command and press Enter…')}
           spellCheck={false}
+          data-testid="terminal-command-input"
           className="flex-1 min-w-[180px] bg-slate-950 border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-[#FF6600] disabled:opacity-60"
         />
         {!isRunning ? (
           <button
             type="button"
             onClick={() => runCommand()}
+            data-testid="terminal-run-command-button"
             className="flex items-center gap-1.5 bg-[#FF6600] hover:bg-[#FF6600]/90 text-white font-black text-xs px-4 py-1.5 rounded-lg active:scale-95 transition-all cursor-pointer"
             title={t('Executar comando', 'Run command')}
           >
@@ -272,6 +325,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
           <button
             type="button"
             onClick={stopCommand}
+            data-testid="terminal-stop-command-button"
             className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 py-1.5 rounded-lg active:scale-95 transition-all cursor-pointer"
             title={t('Parar execução', 'Stop execution')}
           >
@@ -282,6 +336,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
         <button
           type="button"
           onClick={clearTerminal}
+          data-testid="terminal-clear-terminal-button"
           className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs px-3 py-1.5 rounded-lg border border-slate-800 transition-all cursor-pointer"
           title={t('Limpar terminal', 'Clear terminal')}
         >
@@ -298,6 +353,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
             checked={persist}
             onChange={(e) => setPersist(e.target.checked)}
             disabled={isRunning}
+            data-testid="terminal-persist-checkbox"
             className="accent-[#FF6600] w-3.5 h-3.5"
           />
           {t('Persistir (Robot)', 'Persist (Robot)')}
@@ -305,7 +361,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
       </div>
 
       {/* xterm container */}
-      <div ref={containerRef} className="h-72 w-full bg-slate-900 p-2" />
+      <div ref={containerRef} className="h-72 w-full bg-slate-900 p-2" data-testid="terminal-xterm-viewport" />
     </div>
   );
 }

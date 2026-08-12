@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
+import { resolvePersistedResultsDir, resolveResultsDir } from '@/src/server/robot/resultsPaths';
 
 const ARTIFACTS_DIR = 'artifacts';
 const RENDER_WAIT_MS = 3_500;
@@ -27,9 +27,12 @@ const relArtifact = (name: string): string => `${ARTIFACTS_DIR}/${name}`;
 export async function captureRobotReportImages(
   runId: string,
   tests: ReportCaptureTestInput[],
+  resultsPath?: string,
 ): Promise<ReportCaptureResult> {
   const result: ReportCaptureResult = { testReportPaths: {} };
-  const resultsDir = resolveResultsDir(runId);
+  const resultsDir = resultsPath
+    ? resolvePersistedResultsDir(resultsPath, runId)
+    : await resolveResultsDir(runId);
   const reportHtml = path.join(resultsDir, 'report.html');
   const logHtml = path.join(resultsDir, 'log.html');
   const artifactsAbs = path.join(resultsDir, ARTIFACTS_DIR);

@@ -69,7 +69,11 @@ const deriveTargetSpec = (command: string, t: (pt: string, en: string) => string
 };
 
 /** Carrega screenshot do disco (via API) como data URL para embed no jsPDF. */
-const loadScreenshotDataUrl = async (resultsFolder: string, screenshotPath: string): Promise<string | null> => {
+const loadScreenshotDataUrl = async (
+  resultsFolder: string,
+  screenshotPath: string,
+  resultsPath?: string,
+): Promise<string | null> => {
   const toDataUrl = async (params: URLSearchParams): Promise<string | null> => {
     try {
       const res = await fetch(`/api/terminal/screenshot?${params.toString()}`);
@@ -88,7 +92,9 @@ const loadScreenshotDataUrl = async (resultsFolder: string, screenshotPath: stri
   };
 
   const relPath = screenshotPath.replace(/\\/g, '/');
-  const withFolder = await toDataUrl(new URLSearchParams({ folder: resultsFolder, path: relPath }));
+  const withFolderParams = new URLSearchParams({ folder: resultsFolder, path: relPath });
+  if (resultsPath) withFolderParams.set('resultsPath', resultsPath);
+  const withFolder = await toDataUrl(withFolderParams);
   if (withFolder) return withFolder;
   return toDataUrl(new URLSearchParams({ runId: resultsFolder, path: relPath }));
 };
@@ -106,9 +112,14 @@ interface EvidenceManifest {
 const LOGIN_USERS =
   /(standard_user|locked_out_user|problem_user|performance_glitch_user|error_user|visual_user)/;
 
-const loadEvidenceManifest = async (resultsFolder: string): Promise<EvidenceManifest | null> => {
+const loadEvidenceManifest = async (
+  resultsFolder: string,
+  resultsPath?: string,
+): Promise<EvidenceManifest | null> => {
   try {
-    const res = await fetch(`/api/terminal/evidence?folder=${encodeURIComponent(resultsFolder)}`);
+    const params = new URLSearchParams({ folder: resultsFolder });
+    if (resultsPath) params.set('resultsPath', resultsPath);
+    const res = await fetch(`/api/terminal/evidence?${params.toString()}`);
     if (!res.ok) return null;
     return (await res.json()) as EvidenceManifest;
   } catch {
@@ -717,7 +728,7 @@ export const handleExportExecutionReportToPDF = async (
         ),
       };
     }
-    const evidence = await loadEvidenceManifest(resultsFolder);
+    const evidence = await loadEvidenceManifest(resultsFolder, exec.results_path);
     const hasEvidenceOnDisk =
       (evidence?.browserScreenshots?.length ?? 0) > 0 ||
       Object.keys(evidence?.testReports ?? {}).length > 0 ||
@@ -1274,7 +1285,7 @@ export const handleExportExecutionReportToPDF = async (
         for (const st of caseSteps) {
           const shotPath = resolveStepScreenshotPath(st, tc, evidence);
           if (!shotPath) continue;
-          const dataUrl = await loadScreenshotDataUrl(resultsFolder, shotPath);
+          const dataUrl = await loadScreenshotDataUrl(resultsFolder, shotPath, exec.results_path);
           if (!dataUrl) continue;
           loadedStepEvidence.push({ st, dataUrl, imgFormat: imageFormatFromDataUrl(dataUrl) });
         }
@@ -1284,7 +1295,7 @@ export const handleExportExecutionReportToPDF = async (
         let reportNatW = 1366;
         let reportNatH = 768;
         if (testReportPath) {
-          const url = await loadScreenshotDataUrl(resultsFolder, testReportPath);
+          const url = await loadScreenshotDataUrl(resultsFolder, testReportPath, exec.results_path);
           if (url) {
             reportDataUrl = url;
             reportFormat = imageFormatFromDataUrl(url);
@@ -1463,7 +1474,7 @@ export const handleExportExecutionReportToPDF = async (
     // ---- Report Robot Framework (suíte completa) ----
     const suiteReportPath =
       exec.report_screenshot_path ?? evidence?.suiteReport ?? 'artifacts/robot-report.png';
-    const suiteReportUrl = await loadScreenshotDataUrl(resultsFolder, suiteReportPath);
+    const suiteReportUrl = await loadScreenshotDataUrl(resultsFolder, suiteReportPath, exec.results_path);
     if (suiteReportUrl) {
       const suiteFormat = imageFormatFromDataUrl(suiteReportUrl);
       const sx = marginX + 2;

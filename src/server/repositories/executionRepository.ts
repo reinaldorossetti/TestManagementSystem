@@ -81,6 +81,14 @@ export async function insertRun(payload: PersistRunInput, client: DbClient): Pro
   }
 }
 
+/** Replaces a parsed run by ID, allowing a report to be imported again safely. */
+export async function replaceRun(payload: PersistRunInput): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.execution.deleteMany({ where: { id: payload.execution.id } });
+    await insertRun(payload, tx);
+  });
+}
+
 export async function deleteExecution(id: string, client: DbClient = prisma): Promise<void> {
   await client.execution.delete({ where: { id } });
 }

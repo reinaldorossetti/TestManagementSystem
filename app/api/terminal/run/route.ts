@@ -1,6 +1,12 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
+import {
+  cancelRobotRun,
+  registerRobotRun,
+  unregisterRobotRun,
+} from '@/src/server/robot/activeRunRegistry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,9 +17,37 @@ interface RunBody {
   persist?: boolean;
   /** Identificador da execução; usado como subpasta de resultados. */
   runId?: string;
+  /** Pasta relativa a `test_projects/` usada como diretório de trabalho. */
+  workingDirectory?: string;
 }
 
-const looksLikeRobot = (command: string): boolean => /(^|\s)(robot|python\b.*-m\s+robot)/i.test(command);
+const looksLikeRobot = (command: string): boolean =>
+  /(^|\s)(robot|python[0-9]*\s+-m\s+robot|py\s+-m\s+robot)/i.test(command);
+
+function normalizePythonCommand(cmd: string): string {
+  const isWindows = process.platform === 'win32';
+  const targetPython = isWindows ? 'python' : 'python3';
+  const sourcePython = isWindows ? 'python3' : 'python';
+
+  return cmd.replace(
+    new RegExp(`(^|\\s)${sourcePython}(\\s+-m\\s+robot|\\s+.*\\.py|\\s+test_projects)`, 'g'),
+    `$1${targetPython}$2`,
+  );
+}
+
+/** Resolve somente subpastas de `test_projects/`, bloqueando traversal de caminho. */
+function resolveWorkingDirectory(relativeFolder?: string): string | undefined {
+  const folder = relativeFolder?.trim();
+  if (!folder) return undefined;
+
+  const projectsRoot = path.resolve(process.cwd(), 'test_projects');
+  const target = path.resolve(projectsRoot, folder);
+  const relative = path.relative(projectsRoot, target);
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  return target;
+}
 
 /**
  * Local command runner (Fase 0 / MVP — sem sandbox).
@@ -36,20 +70,43 @@ export async function POST(req: Request): Promise<Response> {
   if (!command) {
     return new Response('Comando ausente.', { status: 400 });
   }
+  command = normalizePythonCommand(command);
+
+  const workingDirectory = resolveWorkingDirectory(body.workingDirectory);
+  if (body.workingDirectory?.trim() && !workingDirectory) {
+    return new Response('Diretório de execução inválido.', { status: 400 });
+  }
 
   // Persistência: para comandos Robot, direciona a saída para results/<runId>.
   // As opções do Robot precisam vir ANTES do caminho da suíte, por isso são
   // injetadas logo após o invocador (`robot` / `python -m robot`).
   const willPersist = Boolean(body.persist && body.runId && looksLikeRobot(command));
+  let outputDir: string | undefined;
   if (willPersist && body.runId) {
-    const outputDir = resolveResultsDir(body.runId);
+    outputDir = await resolveResultsDir(body.runId);
     try {
       mkdirSync(outputDir, { recursive: true });
     } catch {
       /* diretório já existe */
     }
-    const options = `--outputdir "${outputDir}" --output output.xml`;
-    command = command.replace(/(python[0-9]*\s+-m\s+robot|py\s+-m\s+robot|robot)\b/i, `$1 ${options}`);
+    const safeOutputDir = outputDir.replace(/\\/g, '/');
+    const physicalOutputOption = `--outputdir "${safeOutputDir}"`;
+    const hasOutputDirectory = /\s--outputdir(?:\s|=)(?:"[^"]*"|'[^']*'|\S+)/i.test(command);
+    command = hasOutputDirectory
+      ? command.replace(
+        /\s--outputdir(?:\s|=)(?:"[^"]*"|'[^']*'|\S+)/i,
+        ` ${physicalOutputOption}`,
+      )
+      : command.replace(
+        /(python[0-9]*\s+-m\s+robot|py\s+-m\s+robot|robot)\b/i,
+        `$1 ${physicalOutputOption}`,
+      );
+    if (!/\s--output(?:\s|=)/i.test(command)) {
+      command = command.replace(
+        /(python[0-9]*\s+-m\s+robot|py\s+-m\s+robot|robot)\b/i,
+        '$1 --output output.xml',
+      );
+    }
   }
 
   const encoder = new TextEncoder();
@@ -75,7 +132,17 @@ export async function POST(req: Request): Promise<Response> {
         }
       };
 
-      const child = spawn(command, { shell: true });
+      const child = spawn(command, { shell: true, cwd: workingDirectory });
+      if (body.runId) registerRobotRun(body.runId, child);
+      const terminateChild = () => {
+        if (body.runId) {
+          cancelRobotRun(body.runId);
+          return;
+        }
+        child.kill();
+      };
+
+      if (outputDir) safeEnqueue(`[ROBOT] --outputdir "${outputDir}"\n`);
 
       child.stdout.on('data', (chunk: Buffer) => safeEnqueue(chunk.toString()));
       child.stderr.on('data', (chunk: Buffer) => safeEnqueue(chunk.toString()));
@@ -86,13 +153,14 @@ export async function POST(req: Request): Promise<Response> {
       });
 
       child.on('close', (code: number | null) => {
+        unregisterRobotRun(body.runId);
         safeEnqueue(`\n[PROCESSO FINALIZADO] exit code: ${code ?? 'null'}\n`);
         safeClose();
       });
 
       // Cliente cancelou (botão Parar / aba fechada): encerra o processo.
       req.signal.addEventListener('abort', () => {
-        child.kill();
+        terminateChild();
         safeClose();
       });
     },

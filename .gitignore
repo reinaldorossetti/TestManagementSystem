@@ -1,4 +1,6 @@
 results/
+test_projects/
+mobile_automation_robot/
 node_modules/
 build/
 dist/
@@ -17,6 +19,7 @@ next-env.d.ts
 /generated/
 prisma/*.db
 prisma/*.db-journal
+prisma/backups/
 
 # Robot Framework real execution outputs (Live Terminal)
 /results/

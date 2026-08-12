@@ -13,6 +13,7 @@ export interface DbExecution {
   total_tests: number;
   passed: number;
   failed: number;
+  skipped: number;
   status: 'PASS' | 'FAIL';
   results_path: string; // caminho absoluto do output.xml
   /** Nome da pasta em results/ (ex.: RUN-2026-06-25_17-51-30-47841). */
@@ -125,6 +126,24 @@ export interface DbTestSpec {
   created_at: string;
 }
 
+/// Valid platform options for a Project ("Detalhes do Projeto" form).
+export type ProjectPlatform = "Web" | "Mobile" | "Desktop";
+
+/// A project used to group imported test folders/features (e.g. "Contacard Mobile").
+export interface DbProject {
+  id: string;
+  name: string;
+  details?: string | null;
+  platform?: ProjectPlatform | null;
+  created_at: string;
+}
+
+/// Association between a test folder/feature path and the project it was imported into.
+export interface DbFolderProject {
+  folder_path: string;
+  project_id: string;
+}
+
 export interface VirtualDatabase {
   executions: DbExecution[];
   test_cases: DbTestCase[];
@@ -133,9 +152,38 @@ export interface VirtualDatabase {
   test_cases_sphere?: DbTestCaseSphere[];
   test_folders?: string[];
   folder_acceptance_docs?: DbFolderAcceptanceDoc[];
+  projects?: DbProject[];
+  folder_projects?: DbFolderProject[];
 }
 
 // Initial seed data — execuções vazias; novos runs reais preenchem via Terminal Ao Vivo.
+const INITIAL_SEED_TEST_FOLDERS: string[] = [
+  "br.com.grupocard.contacard.dev",
+  "br.com.grupocard.contacard.dev/Recarga de Conteúdo",
+  "br.com.grupocard.contacard.dev/Pix",
+  "br.com.grupocard.contacard.dev/Pix/Pix Automático",
+  "br.com.grupocard.contacard.dev/Pagamento de Boleto",
+  "br.com.grupocard.contacard.dev/Consolidado FGTS",
+  "br.com.grupocard.contacard.dev/Recarga de telefone",
+  "br.com.grupocard.contacard.dev/Cadastro - Onboarding",
+  "br.com.grupocard.contacard.dev/Calculadora",
+  "br.com.grupocard.contacard.dev/Adicionar Dinheiro",
+  "br.com.grupocard.contacard.dev/Meus Dados",
+  "br.com.grupocard.contacard.dev/Esim",
+  "br.com.grupocard.contacard.dev/Nota fiscal",
+  "br.com.grupocard.contacard.dev/Aprovações de Contrato",
+  "br.com.grupocard.contacard.dev/Transferência P2P",
+  "br.com.grupocard.contacard.dev/Pendências",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/AL DA SORTE",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/Loterias Online",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/PE da Sorte",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/SP da Sorte",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/MS CAP",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/PALPITE DO MILHÃO",
+  "br.com.grupocard.contacard.dev/Sorte e capitalização/FAMILHAO DO HUCK"
+];
+
 export const INITIAL_DB_SEED: VirtualDatabase = {
   executions: [],
   test_cases: [],
@@ -174,32 +222,20 @@ export const INITIAL_DB_SEED: VirtualDatabase = {
       created_at: "2026-06-18 09:20:00"
     }
   ],
-  test_folders: [
-    "br.com.grupocard.contacard.dev",
-    "br.com.grupocard.contacard.dev/Recarga de Conteúdo",
-    "br.com.grupocard.contacard.dev/Pix",
-    "br.com.grupocard.contacard.dev/Pix/Pix Automático",
-    "br.com.grupocard.contacard.dev/Pagamento de Boleto",
-    "br.com.grupocard.contacard.dev/Consolidado FGTS",
-    "br.com.grupocard.contacard.dev/Recarga de telefone",
-    "br.com.grupocard.contacard.dev/Cadastro - Onboarding",
-    "br.com.grupocard.contacard.dev/Calculadora",
-    "br.com.grupocard.contacard.dev/Adicionar Dinheiro",
-    "br.com.grupocard.contacard.dev/Meus Dados",
-    "br.com.grupocard.contacard.dev/Esim",
-    "br.com.grupocard.contacard.dev/Nota fiscal",
-    "br.com.grupocard.contacard.dev/Aprovações de Contrato",
-    "br.com.grupocard.contacard.dev/Transferência P2P",
-    "br.com.grupocard.contacard.dev/Pendências",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/AL DA SORTE",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/Loterias Online",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/PE da Sorte",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/SP da Sorte",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/MS CAP",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/PALPITE DO MILHÃO",
-    "br.com.grupocard.contacard.dev/Sorte e capitalização/FAMILHAO DO HUCK"
+  test_folders: INITIAL_SEED_TEST_FOLDERS,
+  projects: [
+    {
+      id: "PROJ-DEFAULT",
+      name: "Contacard Mobile",
+      details: "Aplicativo mobile Contacard - fluxos de recarga, Pix, boletos e cadastro.",
+      platform: "Mobile",
+      created_at: "2026-06-15 08:00:00"
+    }
   ],
+  folder_projects: INITIAL_SEED_TEST_FOLDERS.map((folder_path) => ({
+    folder_path,
+    project_id: "PROJ-DEFAULT"
+  })),
   test_cases_sphere: [
     {
       id: "RECEL01",

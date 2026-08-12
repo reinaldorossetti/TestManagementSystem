@@ -11,22 +11,35 @@ import { listTestSpecs } from '@/src/server/repositories/testSpecRepository';
 import { listSphereCases } from '@/src/server/repositories/testCaseSphereRepository';
 import { listFolders } from '@/src/server/repositories/folderRepository';
 import { listAcceptanceDocs } from '@/src/server/services/folderAcceptanceDocService';
+import { listProjects } from '@/src/server/repositories/projectRepository';
+import { listFolderProjects } from '@/src/server/repositories/folderProjectRepository';
 
 /**
  * Builds the full relational snapshot in the `VirtualDatabase` shape expected by
  * the frontend, aggregating every table in a single read.
  */
 export async function getSnapshot(): Promise<VirtualDatabase> {
-  const [executions, testCases, steps, testSpecs, sphereCases, folders, acceptanceDocs] =
-    await Promise.all([
-      listExecutions(),
-      listTestCases(),
-      listSteps(),
-      listTestSpecs(),
-      listSphereCases(),
-      listFolders(),
-      listAcceptanceDocs(),
-    ]);
+  const [
+    executions,
+    testCases,
+    steps,
+    testSpecs,
+    sphereCases,
+    folders,
+    acceptanceDocs,
+    projects,
+    folderProjects,
+  ] = await Promise.all([
+    listExecutions(),
+    listTestCases(),
+    listSteps(),
+    listTestSpecs(),
+    listSphereCases(),
+    listFolders(),
+    listAcceptanceDocs(),
+    listProjects(),
+    listFolderProjects(),
+  ]);
 
   return {
     executions,
@@ -36,12 +49,14 @@ export async function getSnapshot(): Promise<VirtualDatabase> {
     test_cases_sphere: sphereCases,
     test_folders: folders,
     folder_acceptance_docs: acceptanceDocs,
+    projects,
+    folder_projects: folderProjects,
   };
 }
 
 /** Wipes execution history and restores the canonical demo dataset. */
 export async function resetDatabase(): Promise<VirtualDatabase> {
-  await seedDatabase(prisma);
+  await seedDatabase(prisma, { replaceExisting: true });
   return getSnapshot();
 }
 
@@ -72,6 +87,8 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
     await tx.testFolder.deleteMany();
 
     await tx.folderAcceptanceDoc.deleteMany();
+    await tx.folderProject.deleteMany();
+    await tx.project.deleteMany();
 
     for (const execution of db.executions) {
       const resultsFolder =
@@ -139,6 +156,27 @@ export async function replaceDatabase(db: VirtualDatabase): Promise<void> {
 
     for (const folderPath of db.test_folders ?? []) {
       await tx.testFolder.create({ data: { path: folderPath } });
+    }
+
+    for (const project of db.projects ?? []) {
+      await tx.project.create({
+        data: {
+          id: project.id,
+          name: project.name,
+          details: project.details ?? null,
+          platform: project.platform ?? null,
+          createdAt: project.created_at,
+        },
+      });
+    }
+
+    for (const link of db.folder_projects ?? []) {
+      await tx.folderProject.create({
+        data: {
+          folderPath: link.folder_path,
+          projectId: link.project_id,
+        },
+      });
     }
 
     for (const doc of db.folder_acceptance_docs ?? []) {

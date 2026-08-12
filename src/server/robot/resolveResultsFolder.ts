@@ -4,7 +4,7 @@ import {
   extractResultsFolderFromPath,
   isPlausibleResultsFolderName,
 } from '@/src/utils/robotResultsFolder';
-import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
+import { resolvePersistedResultsDir, resolveResultsDir } from '@/src/server/robot/resultsPaths';
 
 export interface ResolveFolderInput {
   executionId: string;
@@ -15,7 +15,17 @@ export interface ResolveFolderInput {
 async function folderExistsOnDisk(folder: string): Promise<boolean> {
   if (!isPlausibleResultsFolderName(folder)) return false;
   try {
-    const dir = resolveResultsDir(folder);
+    const dir = await resolveResultsDir(folder);
+    await access(path.join(dir, 'output.xml'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function persistedPathExistsOnDisk(resultsPath: string, folder?: string): Promise<boolean> {
+  try {
+    const dir = resolvePersistedResultsDir(resultsPath, folder);
     await access(path.join(dir, 'output.xml'));
     return true;
   } catch {
@@ -27,6 +37,10 @@ async function folderExistsOnDisk(folder: string): Promise<boolean> {
 export async function resolveBestResultsFolder(
   input: ResolveFolderInput,
 ): Promise<string | null> {
+  if (input.resultsPath && await persistedPathExistsOnDisk(input.resultsPath, input.resultsFolder)) {
+    return input.resultsFolder?.trim()
+      || path.basename(resolvePersistedResultsDir(input.resultsPath));
+  }
   const candidates = [
     input.resultsFolder?.trim(),
     input.resultsPath?.trim() ? extractResultsFolderFromPath(input.resultsPath) : null,

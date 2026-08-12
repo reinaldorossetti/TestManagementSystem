@@ -17,7 +17,7 @@ export class BasePage {
 
   /** Opens a workspace panel by its `tab` query param and waits for hydration. */
   async open(tab: WorkspaceTab = 'terminal'): Promise<void> {
-    await this.page.goto(`/${tab}`);
+    await this.page.goto(new URL(`/${tab}`, 'http://localhost:3000').toString());
     await this.waitForAppReady();
   }
 

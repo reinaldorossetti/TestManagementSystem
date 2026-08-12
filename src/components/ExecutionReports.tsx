@@ -47,11 +47,12 @@ interface ExecutionReportsProps {
   sqliteDb: VirtualDatabase;
   onClearHistory?: () => void;
   onRunFeature?: () => void;
+  onLoadLatestRobotReport?: () => Promise<void>;
   language?: 'PT' | 'ENG';
   onChangeLanguage?: (lang: 'PT' | 'ENG') => void;
 }
 
-export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, language = 'PT', onChangeLanguage }: ExecutionReportsProps) {
+export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, onLoadLatestRobotReport, language = 'PT', onChangeLanguage }: ExecutionReportsProps) {
   const t = createTranslator(language);
 
   // General states
@@ -75,6 +76,19 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
   
   // Toast notifications or clipboard copy indicators
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [isLoadingLatestRobotReport, setIsLoadingLatestRobotReport] = useState(false);
+
+  const handleLoadLatestRobotReport = async () => {
+    if (!onLoadLatestRobotReport || isLoadingLatestRobotReport) return;
+    setIsLoadingLatestRobotReport(true);
+    try {
+      await onLoadLatestRobotReport();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : t('Não foi possível ler o último relatório Robot.', 'Could not read the latest Robot report.'));
+    } finally {
+      setIsLoadingLatestRobotReport(false);
+    }
+  };
 
   // Helper: Format duration with proper time-units
   const formatDuration = (seconds: number) => {
@@ -195,7 +209,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
     const totalTests = exec.total_tests;
     const passedTestsCount = exec.passed;
     const failedTestsCount = exec.failed;
-    const skippedTestsCount = Math.max(0, totalTests - passedTestsCount - failedTestsCount);
+    const skippedTestsCount = exec.skipped ?? Math.max(0, totalTests - passedTestsCount - failedTestsCount);
 
     const successPct = totalTests > 0 ? (passedTestsCount / totalTests) * 100 : 0;
     const failedPct = totalTests > 0 ? (failedTestsCount / totalTests) * 100 : 0;
@@ -821,6 +835,11 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
                 <div className="text-left">
                   <span className="text-[10px] text-[#FF6600] font-bold block uppercase mb-0.5">results_path em SQLite:</span>
                   <span className="text-slate-300 font-bold select-text break-all">{exec.results_path}</span>
+                  {exec.results_folder && (
+                    <span className="text-[10px] text-slate-500 block mt-2">
+                      {t('Pasta da execução:', 'Execution folder:')} <strong className="text-slate-300">results/{exec.results_folder}/</strong>
+                    </span>
+                  )}
                 </div>
                 <button 
                   onClick={() => handleCopy(exec.results_path)}
@@ -1008,6 +1027,21 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
 
         {/* View Mode & Actions Toggle */}
         <div className="flex gap-2.5 items-center shrink-0 font-mono">
+          {onLoadLatestRobotReport && (
+            <button
+              type="button"
+              onClick={() => void handleLoadLatestRobotReport()}
+              disabled={isLoadingLatestRobotReport}
+              data-testid="reports-load-latest-robot-report-button"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-mono font-bold text-sky-300 hover:text-sky-100 border border-sky-500/40 hover:border-sky-400 rounded-lg transition-all disabled:opacity-50 disabled:cursor-wait"
+              title={t('Ler e persistir o último output.xml gerado pelo Robot Framework', 'Read and persist the latest Robot Framework output.xml')}
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isLoadingLatestRobotReport ? 'animate-spin' : ''}`} />
+              {isLoadingLatestRobotReport
+                ? t('Lendo Robot...', 'Reading Robot...')
+                : t('Ler último relatório Robot', 'Read latest Robot report')}
+            </button>
+          )}
           <div className="flex bg-slate-950 border border-slate-800 rounded-lg p-1">
             <button 
               onClick={() => setViewMode('cards')}
@@ -1052,6 +1086,20 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, langu
             >
               <PlayCircle className="w-4 h-4" />
               {t("Executar Feature Completa Agora", "Run Full Feature Now")}
+            </button>
+          )}
+          {onLoadLatestRobotReport && (
+            <button
+              type="button"
+              onClick={() => void handleLoadLatestRobotReport()}
+              disabled={isLoadingLatestRobotReport}
+              data-testid="reports-empty-load-latest-robot-report-button"
+              className="mt-2 px-4 py-2 border border-sky-500/50 hover:border-sky-400 text-xs font-bold text-sky-300 rounded-lg transition-all flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RotateCcw className={`w-4 h-4 ${isLoadingLatestRobotReport ? 'animate-spin' : ''}`} />
+              {isLoadingLatestRobotReport
+                ? t('Lendo relatório Robot...', 'Reading Robot report...')
+                : t('Ler último relatório gerado pelo Robot', 'Read latest Robot-generated report')}
             </button>
           )}
         </div>

@@ -38,10 +38,19 @@ O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamento
 
 1. **Parser Sintático (`src/utils/featureLoader.ts`)**: Mapeia arquivos do Robot Framework e Gherkin tradicional, extraindo metadados estruturados, tags e cenários.
 2. **Dashboard de Monitoria (Cliente React)**: Apresenta os cenários em cartões interativos organizados por status, tags e módulos, com os passos BDD executados.
-3. **Mecanismo de Execução Assistida**: Simula a execução em dois níveis (completo vs. focado), gerando logs idênticos aos terminais shell reais do Robot.
+3. **Mecanismo de Execução Real**: Executa o Robot Framework localmente em dois níveis (completo vs. focado), com streaming de stdout/stderr e artefatos reais em `results/`.
 4. **API REST (`app/api/**`)**: Route Handlers que expõem o snapshot do banco, execuções, specs, casos de teste, pastas e consultas SQL somente-leitura.
 5. **Camada de Dados (`src/server/**`)**: Repositories + Services + validação Zod sobre o Prisma Client, garantindo separação de responsabilidades (SOLID).
 6. **Persistência SQLite real (`prisma/`)**: Banco relacional gerenciado por Prisma 7, consultável também pelo painel **Navegador SQLite**.
+
+### Regra visual da Execução Manual
+
+Na tela de execução manual, IDs técnicos que combinam feature e caso devem ser separados visualmente. Por exemplo, o registro persistido `ADICIONAR-DINHEIRO-VIA-BOLETO-TC-01` deve aparecer como:
+
+- `Feature: ADICIONAR-DINHEIRO-VIA-BOLETO`
+- `TC-01 - Cenario de Teste Positivo - Validar adicionar dinheiro via Boleto`
+
+O prefixo técnico completo não deve ser repetido junto do identificador e do título do cenário.
 
 ---
 
@@ -66,7 +75,8 @@ O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamento
 ## 📦 Instalação Passo a Passo
 
 ### Pré-requisitos
-- **Node.js** 20+ (recomendado LTS) e **npm** 10+.
+- **Node.js** 20.19+ ou 22.12+ (recomendado LTS) e **npm** 10+.
+- **Python** 3.10+ (`python3` / `python`) e `pip`.
 - Git para clonar o repositório.
 
 ### 1. Clonar o repositório
@@ -75,13 +85,45 @@ git clone <url-do-repositorio> TestManagementSystem
 cd TestManagementSystem
 ```
 
-### 2. Instalar as dependências
+### 2. Instalar as dependências do Node.js
 ```bash
 npm install
 ```
 > O hook `postinstall` executa `prisma generate` automaticamente, criando o Prisma Client em `generated/prisma`.
 
-### 3. Configurar as variáveis de ambiente
+### 3. Instalar as Bibliotecas Python e Dependências do Playwright (Robot Framework)
+Para que a execução local de testes funcione no Terminal e no motor de automação Web (Browser Library / Playwright), instale e inicialize as dependências:
+
+- **Linux / macOS**:
+  ```bash
+  # 1. Instalar pacotes Python
+  python3 -m pip install --user --break-system-packages robotframework robotframework-browser robotframework-requests
+
+  # 2. Inicializar o Playwright para a biblioteca Robot Framework Browser (Node.js & binários dos navegadores)
+  rfbrowser init
+
+  # 3. (Se necessário no Linux) Instalar dependências de sistema do sistema operacional para o Playwright
+  npx playwright install-deps
+  ```
+- **Windows**:
+  ```bash
+  # 1. Instalar pacotes Python
+  python -m pip install robotframework robotframework-browser robotframework-requests
+
+  # 2. Inicializar o Playwright para a biblioteca Robot Framework Browser (Node.js & binários dos navegadores)
+  rfbrowser init
+
+  # 3. Instalar os navegadores do Playwright para Node.js (E2E)
+  npx playwright install
+  ```
+
+| Biblioteca Python | Versão Mínima | Descrição |
+|---|---|---|
+| `robotframework` | `7.4+` | Motor de execução de testes e suporte a BDD Gherkin |
+| `robotframework-browser` | `20.0+` | Automação Web via Playwright |
+| `robotframework-requests` | `0.9+` | Testes de APIs HTTP/REST |
+
+### 4. Configurar as variáveis de ambiente
 Crie um arquivo `.env` na raiz (use o `.env.example` como base):
 ```bash
 # Windows (PowerShell)
@@ -94,7 +136,7 @@ Conteúdo mínimo do `.env`:
 DATABASE_URL="file:./prisma/dev.db"
 ```
 
-### 4. Criar o schema do banco e popular os dados de demonstração
+### 5. Criar o schema do banco e popular os dados de demonstração
 ```bash
 npm run db:migrate   # cria/atualiza o schema SQLite (prisma migrate dev)
 npm run db:seed      # popula o banco com o seed de demonstração (INITIAL_DB_SEED)
@@ -121,6 +163,14 @@ npm run build   # prisma generate + next build
 npm run start   # sobe o servidor de produção em http://localhost:3000
 ```
 
+> O build não executa seed nem reset do banco. Os dados existentes em
+> `prisma/dev.db` permanecem preservados durante `npm run build`.
+
+O seed também é não destrutivo por padrão: `npm run db:seed` popula somente um
+banco vazio e não substitui registros existentes. Para restaurar
+intencionalmente o estado inicial, use `npm run db:reset` ou a ação explícita
+de reset nas configurações da aplicação.
+
 ### Inspecionar o banco de dados (Prisma Studio)
 ```bash
 npm run db:studio
@@ -142,7 +192,7 @@ npm run db:reset   # prisma migrate reset --force (recria e re-semeia)
 | `npm run typecheck` | Checagem de tipos (`tsc --noEmit`) |
 | `npm run db:generate` | Gera o Prisma Client |
 | `npm run db:migrate` | Aplica migrações de desenvolvimento |
-| `npm run db:seed` | Popula o banco com o seed de demonstração |
+| `npm run db:seed` | Popula um banco vazio com o seed de demonstração, preservando dados existentes |
 | `npm run db:reset` | Recria o banco e re-semeia |
 | `npm run db:studio` | Abre o Prisma Studio |
 | `npm run test:e2e` | Executa a suíte Playwright |
@@ -155,6 +205,7 @@ npm run db:reset   # prisma migrate reset --force (recria e re-semeia)
 
 ```
 TestManagementSystem/
+├── .github/workflows/ci.yml       # CI: typecheck, build e testes Playwright
 ├── app/                          # Next.js App Router (UI + API)
 │   ├── api/                      # Route Handlers (backend REST)
 │   │   ├── database/route.ts             # GET snapshot / PUT substituir banco
@@ -186,7 +237,7 @@ TestManagementSystem/
 │   │   ├── validation/schemas.ts # Schemas Zod de entrada da API
 │   │   ├── mappers/dbMappers.ts  # Prisma → tipos de domínio (Db*)
 │   │   ├── http/responses.ts     # Helpers de resposta/erro da API
-│   │   ├── db/seed.ts            # Lógica idempotente de seed
+│   │   ├── db/seed.ts            # Seed não destrutivo; substituição somente no reset explícito
 │   │   └── utils/identifiers.ts  # Geração de IDs e timestamps
 │   ├── utils/
 │   │   ├── featureLoader.ts      # Parser Robot/Gherkin
@@ -240,9 +291,14 @@ TestManagementSystem/
 ### Plataforma
 - **API REST** completa para banco, execuções, specs, casos de teste, pastas e SQL.
 - **Sincronização multi-abas** em tempo real via `BroadcastChannel`.
+- **Proxy de navegação (`proxy.ts`)**: substitui a convenção depreciada `middleware.ts` no Next.js 16 e preserva os redirecionamentos de `/` e `/?tab=...` para as rotas dedicadas.
 - **Suporte bilíngue PT-BR / EN-US** centralizado em `src/utils/i18n.ts`.
 - **TMS Standalone**: gestão de casos de teste (árvore de pastas/features, filtro, detalhe com Visão Geral/Auditoria/Scripts, criar/editar/excluir/executar).
+- **Observação por pasta/feature**: no formulário **Editar** do TMS Standalone, a opção **"Aplicar para todos os testes."** altera somente o campo de observação de todos os casos da pasta selecionada; os demais campos de cada caso são preservados.
+- **Importar Testes no TMS**: ação única que seleciona `.feature`, `.txt` ou `.robot`, importa os cenários e os salva diretamente na pasta/feature vinculada ao projeto ativo, sem abrir uma nova aba.
+- **Separação dos fluxos de importação**: o botão TMS `Importar Testes` possui input e handlers próprios; os fluxos legados do Terminal `Importar File` e `Armazenar Testes` permanecem independentes e inalterados.
 - **Menu de Configuração**: controle de velocidade de simulação e reset seguro do banco.
+- **CI no GitHub Actions**: o workflow `.github/workflows/ci.yml` prepara um SQLite isolado, executa typecheck, build e a suíte Playwright, publicando relatórios e evidências de falha.
 - **Testes E2E (Playwright)** cobrindo todos os painéis (ver seção abaixo).
 
 ---
@@ -255,13 +311,14 @@ A suíte de testes E2E valida todos os componentes/painéis da aplicação segui
 - **`e2e/pages/BasePage.ts`**: comportamentos globais (navegação, header, status do DB, idioma, configurações, navegador de painéis).
 - **`e2e/pages/Feature*.ts`**: um Page Object por área — `FeatureWorkspaceShell`, `FeatureTerminal`, `FeatureSqliteBrowser`, `FeatureReports`, `FeatureTms`.
 - **`e2e/fixtures.ts`**: injeta os Page Objects nos testes.
-- **`e2e/*.spec.ts`**: cenários por painel (shell/KPIs, terminal, SQLite, relatórios, TMS).
+- **`e2e/*.spec.ts`**: cenários por painel (shell/KPIs, terminal, SQLite, relatórios, TMS), incluindo a aplicação da observação para todos os testes de uma pasta em `e2e/tms.spec.ts` e a importação combinada de testes pelo TMS em `e2e/tms-project.spec.ts`.
 
 ### Seletores e estabilidade
 Prioridade de seletores: **`id` estável → seletores de acessibilidade (`getByRole`/`getByLabel`/`getByPlaceholder`) → `data-testid`**, evitando CSS/XPath frágil.
 
 ### Configuração relevante
-- O `webServer` do `playwright.config.ts` sobe o **build de produção** (`npm run build && npm run start`), imune ao bug de HMR do Turbopack.
+- O `webServer` do `playwright.config.ts` sobe o **build de produção** (`npm run build && npm run start`) em execuções locais, imune ao bug de HMR do Turbopack.
+- No CI, `PLAYWRIGHT_USE_PREBUILT=true` faz o Playwright reutilizar o build gerado pelo workflow, evitando compilação duplicada.
 - Execução **serial** (`workers: 1`), pois o backend é um único processo com um único arquivo SQLite compartilhado (sem isolamento por teste).
 
 ### Como executar
@@ -276,6 +333,12 @@ npm run test:e2e
 npm run test:e2e:ui
 npm run test:e2e:report
 ```
+
+### GitHub Actions
+
+O workflow **CI** é executado em `push` para `main`/`master`, em pull requests e manualmente via `workflow_dispatch`. O job roda em um ambiente limpo e prepara o banco SQLite descartável `prisma/ci.db` antes de executar typecheck, build e a suíte Playwright.
+
+Os artefatos `playwright-report` e `test-results` são publicados na execução do workflow para facilitar o diagnóstico de falhas. O banco de CI não utiliza o `prisma/dev.db` local.
 
 ---
 
@@ -306,6 +369,10 @@ O parser suporta os dois formatos canônicos de tags:
 
 O sistema armazena **apenas as tags reais desses testes** no banco de dados e as apresenta nos badges de cada cartão na workspace. Cenários sem tag exigem seleção manual em **Configurar tag** antes da execução.
 
+Regra complementar: `Force Tags` (em `*** Settings ***`) é metadado de suíte para organização/rotulagem de pasta no TMS. Ele **não** deve ser exibido como tag de caso de teste, nem concatenado ao identificador visual do badge do teste.
+
+Nos cards da tela TMS, exibir somente a tag/ID do teste e o título do cenário. O nome da pasta ou da feature não deve ser apresentado no card nem anexado ao badge do caso.
+
 ### 4. Mapeamento de Passos (BDD e Keywords)
 Mapeia os passos definidos formalmente com prefixos padrão BDD (como `Dado`, `Quando`, `Então`, `E`, `Mas`, `Given`, `When`, `Then`, `And`, `But`) ou linhas indentadas de ações diretas do Robot (mapeadas dinamicamente com o tipo auxiliar `AND`).
 
@@ -313,7 +380,7 @@ Mapeia os passos definidos formalmente com prefixos padrão BDD (como `Dado`, `Q
 
 ## 🚀 Modos de Execução de Testes
 
-Todas as execuções são **reais** — o interpretador Robot Framework roda localmente via API (`/api/terminal/run`) e os artefatos são gravados em `results/<RUN-...>/`.
+Todas as execuções são **reais** — o interpretador Robot Framework roda localmente via API (`/api/terminal/run`) e os artefatos são gravados em `<repositório-configurado>/<RUN-...>/`.
 
 ### 1. Botão "Execução" (Execução Focada de Cenário Único)
 * **Localização**: Rodapé de cada cartão de cenário na Workspace.
@@ -322,26 +389,40 @@ Todas as execuções são **reais** — o interpretador Robot Framework roda loc
   - Redireciona para a aba **Console Terminal** com streaming de stdout.
   - Comando exemplo:
     ```bash
-    python -m robot -i LT06 robot-sample/login_tests.robot
+    python -m robot --outputdir "results/robot_framework/" -A project_args_file.txt --timestampoutputs -i <Test Tags ou Force Tags> ./
     ```
   - Se o cenário não possuir tag, o sistema solicita seleção em **Configurar tag**.
 
 ### 2. Botão "Executar Feature" (Execução por Tag Ativa)
 * **Localização**: Cabeçalho do **Console Terminal** e tela de **Reports**.
 * **Comportamento**:
-  - Executa testes reais filtrados pela tag selecionada no dropdown (`-i`).
-  - Usa `buildFeatureRobotCommand()` com o arquivo `.robot` de origem da tag.
+  - Executa testes reais filtrados pela tag de suíte `Test Tags` ou `Force Tags` declarada no arquivo selecionado (`-i`).
+  - Usa `buildFeatureRobotCommand()` com `--outputdir`, `-A`, `--timestampoutputs` e o alvo `./`; a API executa o processo dentro da pasta de origem em `test_projects/`.
+  - `[Tags]` de cenário identificam o arquivo/caso, mas não substituem a tag de suíte na execução completa de uma feature.
   - Imprime o comando canônico no console:
     ```bash
-    python -m robot -i login_tests robot-sample/login_tests.robot
+    python -m robot --outputdir "results/robot_framework/" -A project_args_file.txt --timestampoutputs -i adicionar_dinheiro_via_boleto ./
     ```
 
 ### 3. Terminal Ao Vivo — Executar Todos os Testes
-* Executa a suíte completa em `robot-sample/`:
+* Executa a suíte completa em `test_projects/`:
   ```bash
-  python -m robot robot-sample/
+  python -m robot test_projects/
   ```
 * Mesmo pipeline de persistência (`/api/terminal/output`) que **Executar Feature**.
+
+### 4. Finalização, cancelamento e recuperação de Reports
+* Quando o stream Robot termina, a UI libera a execução imediatamente; a leitura de `output.xml` e a captura opcional de `report.html`/`log.html` não bloqueiam o terminal.
+* `output.xml` é persistido diretamente pelo backend no SQLite com execução, casos e passos. A captura visual só complementa o registro e não impede o relatório quando falhar.
+* **Cancelar Execução** cancela a run por `runId` em `/api/terminal/cancel`; no Windows, encerra a árvore `cmd → Python → Robot`.
+* A tela **Reports** oferece **Ler último relatório Robot**, que importa o `output.xml` mais recente no diretório configurado (`results/robot_framework/` por padrão expansível), varrendo subpastas recursivamente e usando `results/` como fallback, e atualiza o histórico.
+* Os dois terminais exibem em tempo real **Total de Testes**, **Sucesso** e **Falhas**; o resumo final do Robot consolida os valores.
+
+### 5. Repositório de relatórios configurável
+* Em **Configurações → Repositório de Relatórios Robot**, configure um caminho relativo à raiz do projeto, como `results/robot_framework/`.
+* O valor é persistido no SQLite, a pasta física é criada ao salvar e o painel mostra o caminho absoluto resolvido.
+* Não existe variável `%ROBOT_HOME%`; valores legados com esse texto são migrados para caminhos relativos reais.
+* A execução recebe uma subpasta única `RUN-...`. Depois da run, o `results_path` absoluto persistido é canônico para Reports, evidências e PDF; mudar a configuração afeta apenas execuções futuras.
 
 ---
 

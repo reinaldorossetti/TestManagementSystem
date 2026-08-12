@@ -443,8 +443,7 @@ export const handleExportToExcel = async (
           // Evidência Link (made clickable with underlines)
           cell.value = {
             text: evidenceLink,
-            hyperlink: evidenceLink,
-            tooltip: 'Acessar captura de tela da evidência'
+            hyperlink: evidenceLink
           };
           cell.font = { name: 'Segoe UI', size: 9, underline: 'single', color: { argb: 'FF2563EB' } };
           cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };

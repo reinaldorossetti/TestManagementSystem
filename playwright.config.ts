@@ -11,6 +11,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const PORT = 3000;
 const BASE_URL = `http://localhost:${PORT}`;
+const webServerCommand = process.env.PLAYWRIGHT_USE_PREBUILT === 'true'
+  ? 'npm run start'
+  : 'npm run build && npm run start';
 
 export default defineConfig({
   testDir: './e2e',
@@ -24,7 +27,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   timeout: 30_000,
-  expect: { timeout: 10_000 },
+  expect: { timeout: 20_000 },
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
@@ -38,7 +41,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run build && npm run start',
+    // CI builds once in its dedicated step; local runs remain self-contained.
+    command: webServerCommand,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,

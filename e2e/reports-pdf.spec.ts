@@ -5,6 +5,39 @@ import { readFile, stat } from 'node:fs/promises';
 test.describe('Reports PDF export with visual evidence', () => {
   test.setTimeout(180_000);
 
+  test('Given a completed Robot output, when importing the latest report, then its physical path is persisted', async ({
+    request,
+  }) => {
+    const importResponse = await request.post('/api/terminal/output', { data: {} });
+    if (!importResponse.ok()) {
+      test.skip(true, 'Nenhum output.xml Robot disponível em results/ para importar.');
+    }
+
+    const imported = await importResponse.json() as {
+      execution: { id: string; results_path: string; results_folder?: string };
+      importedFrom: { runId: string; resultsFolder?: string; outputXmlPath: string };
+    };
+
+    expect(imported.importedFrom.runId).toBe(imported.execution.id);
+    expect(imported.importedFrom.outputXmlPath).toBe(imported.execution.results_path);
+    expect(imported.execution.results_path).toMatch(/[\\/]results[\\/][^\\/]+[\\/]output\.xml$/i);
+    expect(imported.execution.results_folder).toBe(imported.importedFrom.resultsFolder);
+
+    const dbResponse = await request.get('/api/database');
+    expect(dbResponse.ok()).toBeTruthy();
+    const dbPayload = await dbResponse.json() as {
+      data?: { executions: Array<{ id: string; results_path: string; results_folder?: string }> };
+      executions?: Array<{ id: string; results_path: string; results_folder?: string }>;
+    };
+    const executions = dbPayload.data?.executions ?? dbPayload.executions ?? [];
+    const persisted = executions.find((execution) => execution.id === imported.execution.id);
+
+    expect(persisted).toMatchObject({
+      results_path: imported.importedFrom.outputXmlPath,
+      results_folder: imported.importedFrom.resultsFolder,
+    });
+  });
+
   test('Given a real Robot run folder, when exporting PDF, then screenshot APIs are used', async ({
     page,
     reports,
@@ -13,7 +46,7 @@ test.describe('Reports PDF export with visual evidence', () => {
     const parseRes = await request.post('/api/terminal/output', {
       data: {
         runId: 'login_tests_screenshots',
-        command: 'python -m robot -i login_tests robot-sample/login_tests.robot',
+        command: 'python -m robot -i login_tests test_projects/login_tests.robot',
         timestamp: '2026-06-25 17:30:57',
       },
     });

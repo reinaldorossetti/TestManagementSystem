@@ -19,11 +19,17 @@ export async function runRobotCommandStreaming(
   runFolder: string,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
+  workingDirectory?: string,
 ): Promise<{ aborted: boolean }> {
   const response = await fetch('/api/terminal/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, persist: true, runId: runFolder }),
+    body: JSON.stringify({
+      command,
+      persist: true,
+      runId: runFolder,
+      workingDirectory,
+    }),
     signal,
   });
 

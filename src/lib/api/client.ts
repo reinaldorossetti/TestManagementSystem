@@ -65,6 +65,15 @@ export const apiClient = {
   clearExecutionHistory: () =>
     request<VirtualDatabase>('/api/database/clear-executions', { method: 'POST' }),
 
+  getRobotRuntimeSettings: () =>
+    request<{ resultsDirectory: string; resolvedDirectory: string }>('/api/terminal/settings'),
+
+  updateRobotRuntimeSettings: (resultsDirectory: string) =>
+    request<{ resultsDirectory: string; resolvedDirectory: string }>('/api/terminal/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ resultsDirectory }),
+    }),
+
   runSql: (query: string) =>
     request<SqlQueryResult>('/api/sql', {
       method: 'POST',
@@ -72,6 +81,20 @@ export const apiClient = {
     }),
 
   listExecutions: () => request<DbExecution[]>('/api/executions'),
+
+  importLatestRobotReport: () => request<{
+    execution: DbExecution;
+    testCases: VirtualDatabase['test_cases'];
+    steps: VirtualDatabase['steps'];
+    importedFrom: {
+      runId: string;
+      resultsFolder?: string;
+      outputXmlPath: string;
+    };
+  }>('/api/terminal/output', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  }),
 
   deleteExecution: (id: string) =>
     request<{ id: string }>(`/api/executions/${encodeURIComponent(id)}`, { method: 'DELETE' }),

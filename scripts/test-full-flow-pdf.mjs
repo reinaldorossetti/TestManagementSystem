@@ -16,8 +16,8 @@ function buildRunFolderName(timestamp) {
 const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
 const runFolder = buildRunFolderName(timestamp);
 const command = loginOnly
-  ? 'python -m robot -i login_tests robot-sample/login_tests.robot'
-  : 'python -m robot robot-sample/';
+  ? 'python -m robot -i login_tests test_projects/login_tests.robot'
+  : 'python -m robot test_projects/';
 
 console.log('Run folder:', runFolder);
 console.log('Command:', command);

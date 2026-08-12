@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { 
@@ -47,9 +47,18 @@ import {
   Compass,
   FileSpreadsheet,
   ClipboardCheck,
+  Briefcase,
 } from 'lucide-react';
-import { parseGherkinFeature, ParsedScenario, ParsedFeature } from './utils/featureLoader';
-import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec, DbFolderAcceptanceDoc } from './utils/sqliteEngine';
+import {
+  buildImportedTestCaseId,
+  buildImportedTestCaseTitle,
+  getTestCaseDisplayId,
+  getTestCaseDisplayTitle,
+  parseRobotGherkinFeature,
+  ParsedScenario,
+  ParsedFeature,
+} from './utils/featureLoader';
+import { INITIAL_DB_SEED, executeVirtualSQL, DbExecution, DbTestCase, DbStepLog, VirtualDatabase, DbTestCaseSphere, DbTestSpec, DbFolderAcceptanceDoc, DbProject, ProjectPlatform } from './utils/sqliteEngine';
 import { ExecutionReports } from './components/ExecutionReports';
 import { LiveTerminal } from './components/LiveTerminal';
 import { TestCaseEvidenceTab } from './components/TestCaseEvidenceTab';
@@ -58,7 +67,11 @@ import { SphereCaseStatusBadge } from './components/SphereCaseStatusBadge';
 import { handleExportToExcel } from './utils/excelExporter';
 import { handleExportTestCasesToPDF } from './utils/pdfExporter';
 import { buildStatusByCaseId } from './utils/sphereCaseExecution';
-import { buildFeatureRobotCommand } from './utils/robotCommands';
+import {
+  buildFeatureRobotCommand,
+  buildSingleTestRobotCommand,
+  withRobotOutputDirectory,
+} from './utils/robotCommands';
 import {
   createRunFolderForTimestamp,
   formatRobotRunTimestamp,
@@ -66,10 +79,17 @@ import {
   runRobotCommandStreaming,
 } from './utils/robotRunner';
 import {
+  INITIAL_ROBOT_EXECUTION_PROGRESS,
+  updateRobotExecutionProgress,
+} from './utils/robotExecutionProgress';
+import {
   buildExecutionTagsFromRobotTestTags,
   extractRobotExecutionTags,
+  extractSuiteExecutionTags,
+  normalizeExecutionTagValue,
   resolveRobotFolderLabel,
   type ExecutionTagOption,
+  type RobotProjectOption,
   type RobotTestTagEntry,
 } from './utils/robotTagLoader';
 import { useDatabase } from './hooks/useDatabase';
@@ -232,6 +252,28 @@ Funcionalidade: Jornada de Entrada e Associação de Estabelecimentos - TMS
     Então a mudança de tela é abortada de imediato por falta de privilégio na chave do Representative
     E exibe-se um modal vermelho impeditivo.`;
 
+const isTwoScenarioFallback = (feature: ParsedFeature): boolean =>
+  feature.title === 'Jornada de Entrada e Associação de Estabelecimentos - TMS' &&
+  feature.scenarios.length === 2 &&
+  feature.scenarios[0]?.id === 'SC_ROBOT_001' &&
+  feature.scenarios[1]?.id === 'SC_ROBOT_002' &&
+  feature.scenarios[0]?.title === 'Senha de acesso válida ativa fluxo principal';
+
+const getInitialWorkspaceContent = (): string => {
+  if (typeof window === 'undefined') return INITIAL_GHERKIN_CONTENT;
+
+  const saved = localStorage.getItem('cardmais_gherkin_content');
+  if (!saved) return INITIAL_GHERKIN_CONTENT;
+
+  // Older imports could persist mojibake/invalid content. Do not restore the
+  // parser's two-item safety fallback as if it were the user's full suite.
+  if (isTwoScenarioFallback(parseRobotGherkinFeature(saved))) {
+    return INITIAL_GHERKIN_CONTENT;
+  }
+
+  return saved;
+};
+
 const getDefaultSqlQuery = (caseId: string) => {
   return `-- Exemplos de Query para o Caso de Teste ${caseId}
 
@@ -292,6 +334,139 @@ const getFormattedTimestamp = () => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
+/**
+ * Imported Robot suites commonly restart their numeric IDs at `TC-01`.
+ * Include the TMS folder in newly generated IDs so two suites such as boleto
+ * and Pix can coexist without one replacing the other.
+ */
+const buildWorkspaceImportedCaseId = (
+  folderName: string,
+  tags: string[],
+  scenarioTitle: string,
+  fallbackId: string,
+): string => {
+  const baseId = buildImportedTestCaseId(tags, scenarioTitle, fallbackId);
+  const folderLabel = folderName.split('/').pop() || folderName;
+  const folderSlug = folderLabel
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase();
+
+  return folderSlug ? `${folderSlug}-${baseId}` : baseId;
+};
+
+const normalizeImportedCaseTitleForMatch = (title: string): string =>
+  title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const extractPrimaryScenarioTagFromPreconditions = (preconditions?: string): string | null => {
+  if (!preconditions) return null;
+
+  const tagMatch = preconditions.match(/@([A-Za-z0-9_-]+)/);
+  if (!tagMatch?.[1]) return null;
+
+  return tagMatch[1].toUpperCase();
+};
+
+const normalizeScenarioTagForBadge = (rawTag: string): string | null => {
+  const tag = rawTag.replace(/^@/, '').trim().toUpperCase();
+  if (!tag) return null;
+
+  const technicalSuffix = tag.match(/(?:^|[-_])(TC-\d+|RCT\d+|RECEL\d+|CT\d+)$/i)?.[1];
+  if (technicalSuffix) {
+    return technicalSuffix.toUpperCase();
+  }
+
+  // Real test-level tags such as ADIB02, LT06, RCT07, etc.
+  if (/^[A-Z]{2,}\d+$/.test(tag)) {
+    return tag;
+  }
+
+  // Suite-level tags (e.g. Test Tags / Force Tags) must not be shown
+  // in case badges.
+  return null;
+};
+
+const getSphereCaseBadgeValue = (testCase: { id: string; title: string; preconditions?: string }): string => {
+  const scenarioTag = extractPrimaryScenarioTagFromPreconditions(testCase.preconditions);
+  if (scenarioTag) {
+    const normalizedScenarioTag = normalizeScenarioTagForBadge(scenarioTag);
+    if (normalizedScenarioTag) return normalizedScenarioTag;
+  }
+  return getTestCaseDisplayId(testCase.id, testCase.title);
+};
+
+const sphereCaseTagCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+});
+
+const compareSphereCasesByTag = (
+  left: { id: string; title: string; preconditions?: string },
+  right: { id: string; title: string; preconditions?: string },
+): number => {
+  const tagComparison = sphereCaseTagCollator.compare(
+    getSphereCaseBadgeValue(left),
+    getSphereCaseBadgeValue(right),
+  );
+
+  if (tagComparison !== 0) return tagComparison;
+  return sphereCaseTagCollator.compare(left.id, right.id);
+};
+
+const sphereFolderTextCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+});
+
+const getSphereFolderDisplayLabel = (folder: string): string =>
+  folder.replace('br.com.grupocard.contacard.dev/', '');
+
+const DEFAULT_SPHERE_FOLDER = 'Recarga de telefone';
+
+const resolveDefaultSphereFolder = (folders: string[]): string =>
+  folders.find((folder) => getSphereFolderDisplayLabel(folder) === DEFAULT_SPHERE_FOLDER) ??
+  DEFAULT_SPHERE_FOLDER;
+
+const splitSphereFolderLabel = (label: string): string[] => label.match(/\d+|\D+/g) ?? [label];
+
+const compareSphereFolders = (left: string, right: string): number => {
+  const leftParts = splitSphereFolderLabel(getSphereFolderDisplayLabel(left));
+  const rightParts = splitSphereFolderLabel(getSphereFolderDisplayLabel(right));
+  const partCount = Math.min(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < partCount; index += 1) {
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    const leftIsNumeric = /^\d+$/.test(leftPart);
+    const rightIsNumeric = /^\d+$/.test(rightPart);
+
+    if (leftIsNumeric && rightIsNumeric) {
+      const normalizedLeft = leftPart.replace(/^0+(?=\d)/, '');
+      const normalizedRight = rightPart.replace(/^0+(?=\d)/, '');
+      if (normalizedLeft.length !== normalizedRight.length) {
+        return normalizedLeft.length - normalizedRight.length;
+      }
+      if (normalizedLeft !== normalizedRight) {
+        return normalizedLeft < normalizedRight ? -1 : 1;
+      }
+      continue;
+    }
+
+    if (leftIsNumeric !== rightIsNumeric) return leftIsNumeric ? -1 : 1;
+
+    const textComparison = sphereFolderTextCollator.compare(leftPart, rightPart);
+    if (textComparison !== 0) return textComparison;
+  }
+
+  return leftParts.length - rightParts.length;
+};
+
 export type WorkspaceFeature = 'terminal' | 'sqlite' | 'reports' | 'tms';
 
 interface AppProps {
@@ -308,22 +483,16 @@ const isWorkspaceFeature = (value: string | null | undefined): value is Workspac
 
 export default function App({ initialTab }: AppProps = {}) {
   // Gherkin source state
-  const [gherkinContent, setGherkinContent] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('cardmais_gherkin_content');
-      if (saved) return saved;
-    }
-    return INITIAL_GHERKIN_CONTENT;
-  });
+  const [gherkinContent, setGherkinContent] = useState<string>(getInitialWorkspaceContent);
   const [parsedFeature, setParsedFeature] = useState<ParsedFeature>(() => {
-    const initialText = (typeof window !== 'undefined' && localStorage.getItem('cardmais_gherkin_content')) || INITIAL_GHERKIN_CONTENT;
-    return parseGherkinFeature(initialText);
+    const initialText = getInitialWorkspaceContent();
+    return parseRobotGherkinFeature(initialText);
   });
 
   useEffect(() => {
     localStorage.setItem('cardmais_gherkin_content', gherkinContent);
     try {
-      setParsedFeature(parseGherkinFeature(gherkinContent));
+      setParsedFeature(parseRobotGherkinFeature(gherkinContent));
     } catch (e) {
       console.error("Syntax error parsing Gherkin:", e);
     }
@@ -333,7 +502,7 @@ export default function App({ initialTab }: AppProps = {}) {
     if (saved) {
       try { return JSON.parse(saved); } catch(e) {}
     }
-    const parsed = parseGherkinFeature(INITIAL_GHERKIN_CONTENT);
+    const parsed = parseRobotGherkinFeature(INITIAL_GHERKIN_CONTENT);
     const initialObj: Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'> = {};
     parsed.scenarios.forEach(sc => {
       initialObj[sc.id] = 'Not executed';
@@ -365,6 +534,10 @@ export default function App({ initialTab }: AppProps = {}) {
   const [isEditingGherkin, setIsEditingGherkin] = useState<boolean>(false);
   const [gherkinTempText, setGherkinTempText] = useState<string>(INITIAL_GHERKIN_CONTENT);
   const [pendingExecutionOnLoad, setPendingExecutionOnLoad] = useState<boolean>(false);
+  const [pendingWorkspaceExecution, setPendingWorkspaceExecution] = useState<{
+    command: string;
+    sourceFolder: string;
+  } | null>(null);
   const [language, setLanguage] = useState<'PT' | 'ENG'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('qa_tms_lang');
@@ -381,10 +554,59 @@ export default function App({ initialTab }: AppProps = {}) {
 
   // Command configurations
   const [executionTags, setExecutionTags] = useState<ExecutionTagOption[]>([]);
+  const [projectFolders, setProjectFolders] = useState<string[]>([]);
   const [filterTag, setFilterTag] = useState<string>('');
+  const [selectedProjectFolder, setSelectedProjectFolder] = useState<string | null>(null);
   const [newTagInput, setNewTagInput] = useState<string>('');
-  const [argsFile, setArgsFile] = useState<string>('project_args_file.txt');
+  const [argsFile, setArgsFile] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
+  const [robotResultsDirectory, setRobotResultsDirectory] = useState('results/');
+  const [resolvedRobotResultsDirectory, setResolvedRobotResultsDirectory] = useState('');
+  const [isSavingRobotResultsDirectory, setIsSavingRobotResultsDirectory] = useState(false);
+
+  // Lista de "projetos" vinda exclusivamente das pastas reais em `test_projects/`.
+  const projectOptions = useMemo<RobotProjectOption[]>(
+    () =>
+      projectFolders.map((folder) => {
+        const displayName = folder
+          .split(/[-_]/)
+          .filter(Boolean)
+          .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+          .join(' ');
+
+        return {
+          folder,
+          name: displayName || folder,
+          label: displayName || folder,
+        };
+      }),
+    [projectFolders],
+  );
+
+  // Features/tags disponíveis para o projeto (pasta) atualmente selecionado.
+  const tagsForSelectedProject = useMemo(
+    () =>
+      selectedProjectFolder !== null
+        ? executionTags.filter((tag) => (tag.sourceFolder ?? '') === selectedProjectFolder)
+        : executionTags,
+    [executionTags, selectedProjectFolder],
+  );
+
+  /** Usa a primeira tag de suíte disponível (`Test Tags` ou `Force Tags`). */
+  const getSuiteTestTagForProject = (projectFolder: string | null): string =>
+    executionTags.find(
+      (tag) => tag.isSuiteTestTag && (tag.sourceFolder ?? '') === (projectFolder ?? ''),
+    )?.value ?? '';
+
+  // Mantém o projeto selecionado sincronizado com a feature/tag ativa,
+  // garantindo que a pasta do projeto seja sempre resolvida automaticamente.
+  useEffect(() => {
+    if (!filterTag) return;
+    const activeTag = executionTags.find((tag) => tag.value === filterTag);
+    if (activeTag) {
+      setSelectedProjectFolder(activeTag.sourceFolder ?? '');
+    }
+  }, [filterTag, executionTags]);
 
   const applyExecutionTagsFromRobot = (
     entries: RobotTestTagEntry[],
@@ -394,6 +616,7 @@ export default function App({ initialTab }: AppProps = {}) {
     setExecutionTags(clearedTags);
 
     if (clearedTags.length > 0) {
+      setSelectedProjectFolder(clearedTags[0].sourceFolder ?? '');
       setFilterTag(clearedTags[0].value);
       if (options?.log !== false) {
         appendTerminalLog(
@@ -402,21 +625,45 @@ export default function App({ initialTab }: AppProps = {}) {
         );
       }
     } else {
+      setSelectedProjectFolder(null);
       setFilterTag('');
       if (options?.log !== false) {
         appendTerminalLog(
-          `${options?.logPrefix ?? '[TAGS]'} Nenhuma tag Robot encontrada em robot-sample/.`,
+          `${options?.logPrefix ?? '[TAGS]'} Nenhuma tag Robot encontrada em test_projects/.`,
           'info',
         );
       }
     }
   };
 
+  /**
+   * Ao selecionar um projeto (pasta de `test_projects/`), procura a
+   * primeira feature/tag pertencente a ele e ajusta a tag ativa automaticamente.
+   */
+  const handleSelectProject = (projectFolder: string) => {
+    setSelectedProjectFolder(projectFolder);
+    const firstTagOfProject = executionTags.find(
+      (tag) => tag.isSuiteTestTag && (tag.sourceFolder ?? '') === projectFolder,
+    ) ?? executionTags.find((tag) => (tag.sourceFolder ?? '') === projectFolder);
+    setFilterTag(firstTagOfProject?.value ?? '');
+  };
+
   const refreshExecutionTagsFromRobotSample = async (options?: { log?: boolean }) => {
     try {
       const res = await fetch('/api/terminal/robot-tags');
       if (!res.ok) throw new Error(res.statusText);
-      const data = (await res.json()) as { tags: RobotTestTagEntry[] };
+      const data = (await res.json()) as {
+        tags: RobotTestTagEntry[];
+        projectFolders?: string[];
+      };
+      const folders = data.projectFolders ?? [];
+      setProjectFolders(folders);
+      if (folders.length > 0) {
+        setSelectedProjectFolder((current) => {
+          if (current && folders.includes(current)) return current;
+          return folders[0];
+        });
+      }
       applyExecutionTagsFromRobot(data.tags ?? [], {
         log: options?.log,
         logPrefix: '[TAGS]',
@@ -434,6 +681,37 @@ export default function App({ initialTab }: AppProps = {}) {
   useEffect(() => {
     void refreshExecutionTagsFromRobotSample({ log: false });
   }, []);
+
+  useEffect(() => {
+    void apiClient.getRobotRuntimeSettings()
+      .then(({ resultsDirectory, resolvedDirectory }) => {
+        setRobotResultsDirectory(resultsDirectory);
+        setResolvedRobotResultsDirectory(resolvedDirectory);
+      })
+      .catch(() => {
+        // O backend usa o padrão seguro caso a preferência ainda não exista.
+      });
+  }, []);
+
+  const handleSaveRobotResultsDirectory = async () => {
+    if (isSavingRobotResultsDirectory) return;
+    setIsSavingRobotResultsDirectory(true);
+    try {
+      const { resultsDirectory, resolvedDirectory } = await apiClient.updateRobotRuntimeSettings(robotResultsDirectory);
+      setRobotResultsDirectory(resultsDirectory);
+      setResolvedRobotResultsDirectory(resolvedDirectory);
+      appendTerminalLog(`[CONFIG] Diretório de resultados Robot salvo: ${resultsDirectory}`, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendTerminalLog(`[CONFIG] Não foi possível salvar o diretório de resultados: ${message}`, 'error');
+      alert(t(
+        `Não foi possível salvar o diretório de resultados: ${message}`,
+        `Could not save the results directory: ${message}`,
+      ));
+    } finally {
+      setIsSavingRobotResultsDirectory(false);
+    }
+  };
 
   const handleAddCustomTag = () => {
     if (!newTagInput.trim()) return;
@@ -462,13 +740,14 @@ export default function App({ initialTab }: AppProps = {}) {
   // File Upload Drag & Drop State and Ref
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tmsImportFileInputRef = useRef<HTMLInputElement>(null);
   const acceptanceDocInputRef = useRef<HTMLInputElement>(null);
 
   const importFileContent = (text: string, filename: string) => {
     try {
       setGherkinContent(text);
       setGherkinTempText(text);
-      const parsed = parseGherkinFeature(text);
+      const parsed = parseRobotGherkinFeature(text);
       setParsedFeature(parsed);
       setSelectedScenarioId(null);
       
@@ -486,9 +765,12 @@ export default function App({ initialTab }: AppProps = {}) {
       appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste identificados com sucesso.`, 'info');
 
       if (filename.toLowerCase().endsWith('.robot')) {
+        const suiteExecutionTags = new Set(extractSuiteExecutionTags(text));
         const robotTags = extractRobotExecutionTags(text).map((tag) => ({
           tag,
           sourceFile: filename,
+          sourceFolder: selectedProjectFolder ?? '',
+          isSuiteTestTag: suiteExecutionTags.has(tag),
         }));
         applyExecutionTagsFromRobot(robotTags, { logPrefix: '[TAGS]' });
       }
@@ -497,6 +779,27 @@ export default function App({ initialTab }: AppProps = {}) {
       appendTerminalLog(`[ERROR] Erro ao carregar arquivo importado: ${message}`, 'error');
       alert("Erro ao decodificar o arquivo. Certifique-se de que é um formato válido BDD ou Gherkin.");
     }
+  };
+
+  const decodeFeatureFile = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    try {
+      // Use fatal UTF-8 decoding so legacy Windows-1252 files can be detected
+      // instead of silently turning accented Gherkin keywords into �.
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return new TextDecoder('windows-1252').decode(bytes);
+    }
+  };
+
+  const readFeatureFile = (file: File, onRead: (text: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result instanceof ArrayBuffer) {
+        onRead(decodeFeatureFile(event.target.result));
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -515,26 +818,18 @@ export default function App({ initialTab }: AppProps = {}) {
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target && typeof event.target.result === 'string') {
-          importFileContent(event.target.result, file.name);
-        }
-      };
-      reader.readAsText(file);
+      readFeatureFile(file, (text) => importFileContent(text, file.name));
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target && typeof event.target.result === 'string') {
-          importFileContent(event.target.result, file.name);
-        }
-      };
-      reader.readAsText(file);
+    const input = e.currentTarget;
+    if (input.files && input.files.length > 0) {
+      const file = input.files[0];
+      readFeatureFile(file, (text) => {
+        importFileContent(text, file.name);
+        input.value = '';
+      });
     }
   };
 
@@ -646,6 +941,11 @@ export default function App({ initialTab }: AppProps = {}) {
   // Running state for real Robot execution
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [terminalLogs, setTerminalLogs] = useState<{ id: number; text: string; mode: 'info' | 'success' | 'warn' | 'error' | 'cmd' | 'header' }[]>([]);
+  const [robotExecutionProgress, setRobotExecutionProgress] = useState(
+    INITIAL_ROBOT_EXECUTION_PROGRESS,
+  );
+  const executionAbortControllerRef = useRef<AbortController | null>(null);
+  const activeRobotRunIdRef = useRef<string | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
 
   // Stats Counters
@@ -687,6 +987,22 @@ export default function App({ initialTab }: AppProps = {}) {
   const [editFolderNameValue, setEditFolderNameValue] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Project association state (Projeto atrelado às pastas/features importadas)
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
+  const [isEditingProject, setIsEditingProject] = useState<boolean>(false);
+  const [newProjectNameValue, setNewProjectNameValue] = useState<string>('');
+  const [newProjectDetailsValue, setNewProjectDetailsValue] = useState<string>('');
+  const [newProjectPlatformValue, setNewProjectPlatformValue] = useState<ProjectPlatform>('Web');
+  const [editProjectNameValue, setEditProjectNameValue] = useState<string>('');
+  const [editProjectDetailsValue, setEditProjectDetailsValue] = useState<string>('');
+  const [editProjectPlatformValue, setEditProjectPlatformValue] = useState<ProjectPlatform>('Web');
+
+  const sortedSphereFolders = useMemo(
+    () => [...(sqliteDb.test_folders || [])].sort(compareSphereFolders),
+    [sqliteDb.test_folders],
+  );
+
   // Form states for Test Case CRUD within TMS
   const [formSphereId, setFormSphereId] = useState<string>('');
   const [formSphereFolder, setFormSphereFolder] = useState<string>('');
@@ -695,6 +1011,7 @@ export default function App({ initialTab }: AppProps = {}) {
   const [formSphereSteps, setFormSphereSteps] = useState<string>('');
   const [formSphereExpectedResult, setFormSphereExpectedResult] = useState<string>('');
   const [formSphereObservation, setFormSphereObservation] = useState<string>('');
+  const [applyObservationToFolder, setApplyObservationToFolder] = useState<boolean>(false);
 
   // Recompute dashboard stats whenever the database changes.
   // Persistence is handled by useDatabase (backend API), no longer localStorage.
@@ -718,6 +1035,19 @@ export default function App({ initialTab }: AppProps = {}) {
       totalStepsRow
     });
   }, [sqliteDb]);
+
+  // Keep the "active project" selector pointed at a valid project once the
+  // database snapshot loads (defaults to the first available project).
+  useEffect(() => {
+    const projects = sqliteDb.projects || [];
+    if (projects.length === 0) {
+      if (selectedProjectId) setSelectedProjectId('');
+      return;
+    }
+    if (!projects.some((p) => p.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [sqliteDb.projects, selectedProjectId]);
 
   // Synchronize UI-preference state across tabs via StorageEvent.
   // Database synchronization is handled by useDatabase via BroadcastChannel.
@@ -751,8 +1081,15 @@ export default function App({ initialTab }: AppProps = {}) {
 
   // Command preview compiler helper
   const getCompiledCommand = () => {
-    const active = executionTags.find((t) => t.value === filterTag);
-    return buildFeatureRobotCommand(filterTag, active?.sourceFile);
+    const effectiveTag = filterTag.trim() || getSuiteTestTagForProject(selectedProjectFolder);
+    return withRobotOutputDirectory(
+      buildFeatureRobotCommand(
+        effectiveTag,
+        selectedProjectFolder ?? undefined,
+        argsFile,
+      ),
+      robotResultsDirectory,
+    );
   };
 
   const handleOpenReportHTML = (e?: React.MouseEvent) => {
@@ -808,7 +1145,7 @@ export default function App({ initialTab }: AppProps = {}) {
   // Gherkin editor saving trigger
   const handleSaveGherkin = () => {
     setGherkinContent(gherkinTempText);
-    const parsed = parseGherkinFeature(gherkinTempText);
+    const parsed = parseRobotGherkinFeature(gherkinTempText);
     setParsedFeature(parsed);
     
     const initialObj: Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'> = {};
@@ -907,7 +1244,7 @@ export default function App({ initialTab }: AppProps = {}) {
   const loadSpecToActiveWorkspace = (content: string) => {
     setGherkinContent(content);
     setGherkinTempText(content);
-    const parsed = parseGherkinFeature(content);
+    const parsed = parseRobotGherkinFeature(content);
     setParsedFeature(parsed);
     
     const initialObj: Record<string, 'Not executed' | 'PASS' | 'FAIL' | 'SKIP'> = {};
@@ -1002,7 +1339,7 @@ export default function App({ initialTab }: AppProps = {}) {
   };
 
   const handleSaveCurrentWorkspaceAsSpec = () => {
-    const parsed = parseGherkinFeature(gherkinContent);
+    const parsed = parseRobotGherkinFeature(gherkinContent);
     const specs = sqliteDb.test_specs || [];
     const maxNumber = specs.reduce((max, s) => {
       const num = parseInt(s.id.replace('SPEC-', ''), 10);
@@ -1128,7 +1465,22 @@ export default function App({ initialTab }: AppProps = {}) {
       alert("Esta pasta já existe.");
       return;
     }
-    const updatedDb = { ...sqliteDb, test_folders: [...folders, folderName] };
+    if (!selectedProjectId) {
+      alert(t(
+        "Selecione ou crie um projeto antes de criar uma nova pasta/feature.",
+        "Select or create a project before creating a new folder/feature.",
+      ));
+      return;
+    }
+    const folderProjects = sqliteDb.folder_projects || [];
+    const updatedDb = {
+      ...sqliteDb,
+      test_folders: [...folders, folderName],
+      folder_projects: [
+        ...folderProjects.filter((link) => link.folder_path !== folderName),
+        { folder_path: folderName, project_id: selectedProjectId },
+      ],
+    };
     setSqliteDb(updatedDb);
     setSelectedSphereFolder(folderName);
     setIsCreatingFolder(false);
@@ -1171,6 +1523,10 @@ export default function App({ initialTab }: AppProps = {}) {
         : doc,
     );
 
+    const updatedFolderProjects = (sqliteDb.folder_projects || []).map((link) =>
+      link.folder_path === oldFolderName ? { ...link, folder_path: newFolderName } : link,
+    );
+
     try {
       await apiClient.renameAcceptanceDocFolder(oldFolderName, newFolderName);
     } catch {
@@ -1182,6 +1538,7 @@ export default function App({ initialTab }: AppProps = {}) {
       test_folders: updatedFolders,
       test_cases_sphere: updatedTestCases,
       folder_acceptance_docs: updatedAcceptanceDocs,
+      folder_projects: updatedFolderProjects,
     };
     
     setSqliteDb(updatedDb);
@@ -1210,6 +1567,9 @@ export default function App({ initialTab }: AppProps = {}) {
     const updatedAcceptanceDocs = (sqliteDb.folder_acceptance_docs || []).filter(
       (doc) => doc.folder_path !== folderName,
     );
+    const updatedFolderProjects = (sqliteDb.folder_projects || []).filter(
+      (link) => link.folder_path !== folderName,
+    );
 
     try {
       await apiClient.deleteAcceptanceDoc(folderName);
@@ -1222,6 +1582,7 @@ export default function App({ initialTab }: AppProps = {}) {
       test_folders: updatedFolders,
       test_cases_sphere: updatedTestCases,
       folder_acceptance_docs: updatedAcceptanceDocs,
+      folder_projects: updatedFolderProjects,
     };
 
     setSqliteDb(updatedDb);
@@ -1230,6 +1591,59 @@ export default function App({ initialTab }: AppProps = {}) {
     appendTerminalLog(`[TMS] Pasta "${folderName}" e todos os seus ${count} casos de teste foram excluídos com sucesso.`, 'error');
     setToastMessage(`Pasta excluída com sucesso! (${count} testes removidos)`);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  /** Cria um novo projeto e o define como projeto ativo (usado ao atrelar pastas/testes importados). */
+  const handleCreateProject = (projectName: string, details: string, platform: ProjectPlatform) => {
+    const trimmed = projectName.trim();
+    if (!trimmed) return;
+    const projects = sqliteDb.projects || [];
+    if (projects.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())) {
+      alert(t("Já existe um projeto com este nome.", "A project with this name already exists."));
+      return;
+    }
+    const newProject: DbProject = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID
+        ? `PROJ-${crypto.randomUUID()}`
+        : `PROJ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmed,
+      details: details.trim() || null,
+      platform,
+      created_at: getFormattedTimestamp(),
+    };
+    setSqliteDb({ ...sqliteDb, projects: [...projects, newProject] });
+    setSelectedProjectId(newProject.id);
+    setIsCreatingProject(false);
+    setNewProjectNameValue('');
+    setNewProjectDetailsValue('');
+    setNewProjectPlatformValue('Web');
+    appendTerminalLog(`[TMS] Novo projeto criado: ${newProject.name}`, 'success');
+  };
+
+  /** Altera o nome, os detalhes e a plataforma de um projeto já cadastrado. */
+  const handleUpdateProjectName = (
+    projectId: string,
+    newName: string,
+    details: string,
+    platform: ProjectPlatform,
+  ) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const projects = sqliteDb.projects || [];
+    if (projects.some((p) => p.id !== projectId && p.name.toLowerCase() === trimmed.toLowerCase())) {
+      alert(t("Já existe um projeto com este nome.", "A project with this name already exists."));
+      return;
+    }
+    const previousName = projects.find((p) => p.id === projectId)?.name ?? '';
+    const updatedProjects = projects.map((p) =>
+      p.id === projectId ? { ...p, name: trimmed, details: details.trim() || null, platform } : p,
+    );
+    setSqliteDb({ ...sqliteDb, projects: updatedProjects });
+    setIsEditingProject(false);
+    setEditProjectNameValue('');
+    setEditProjectDetailsValue('');
+    setEditProjectPlatformValue('Web');
+    appendTerminalLog(`[TMS] Projeto renomeado de '${previousName}' para '${trimmed}'`, 'success');
   };
 
   const handleCreateTestCaseSphere = (newCase: DbTestCaseSphere) => {
@@ -1252,13 +1666,20 @@ export default function App({ initialTab }: AppProps = {}) {
     appendTerminalLog(`[TMS] Novo caso de teste criado: ${newCase.id} - ${newCase.title}`, 'success');
   };
 
-  const handleUpdateTestCaseSphere = (id: string, updatedFields: Partial<DbTestCaseSphere>) => {
+  const handleUpdateTestCaseSphere = (
+    id: string,
+    updatedFields: Partial<DbTestCaseSphere>,
+    options: { applyObservationToFolder?: boolean } = {},
+  ) => {
     const list = sqliteDb.test_cases_sphere || [];
     const idx = list.findIndex(tc => tc.id === id);
     if (idx < 0) return;
 
     const previousCase = list[idx];
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const shouldApplyObservationToFolder =
+      options.applyObservationToFolder === true && updatedFields.observation !== undefined;
+    const targetFolder = updatedFields.folder ?? previousCase.folder;
     
     // Track edit history log
     const updatedHistory = previousCase.history ? [...previousCase.history] : [];
@@ -1283,8 +1704,25 @@ export default function App({ initialTab }: AppProps = {}) {
       updated_at: now
     };
 
-    const updatedList = [...list];
-    updatedList[idx] = updatedCase;
+    const updatedList = list.map((testCase, caseIndex) => {
+      if (caseIndex === idx) return updatedCase;
+      if (shouldApplyObservationToFolder && testCase.folder === targetFolder) {
+        return {
+          ...testCase,
+          observation: updatedFields.observation,
+          history: [
+            ...(testCase.history || []),
+            {
+              user: "Reinaldo",
+              action: `updated observation for folder '${targetFolder}'`,
+              time: getFormattedTimestamp(),
+            },
+          ],
+          updated_at: now,
+        };
+      }
+      return testCase;
+    });
 
     const updatedDb = { ...sqliteDb, test_cases_sphere: updatedList };
     setSqliteDb(updatedDb);
@@ -1296,7 +1734,13 @@ export default function App({ initialTab }: AppProps = {}) {
     });
 
     setIsEditingSphereTestCase(false);
-    appendTerminalLog(`[TMS] Caso de teste ${id} atualizado e status reiniciado para não executado no banco SQLite virtual!`, 'success');
+    setApplyObservationToFolder(false);
+    appendTerminalLog(
+      shouldApplyObservationToFolder
+        ? `[TMS] Observação aplicada a todos os testes da pasta '${targetFolder}' e status reiniciado para não executado!`
+        : `[TMS] Caso de teste ${id} atualizado e status reiniciado para não executado no banco SQLite virtual!`,
+      'success',
+    );
   };
 
   const handleDeleteTestCaseSphere = (id: string) => {
@@ -1324,7 +1768,7 @@ export default function App({ initialTab }: AppProps = {}) {
     autoGherkin += `  Quero carregar a especificação do caso de teste ${tCase.id}\n`;
     autoGherkin += `  Para executar as rotinas e persistir os resultados no banco SQLite local.\n\n`;
     autoGherkin += `  @${tCase.id}\n`;
-    autoGherkin += `  Scenario: ${tCase.title.replace(/^[^-]+-\s*/, '')}\n`;
+    autoGherkin += `  Scenario: ${getTestCaseDisplayTitle(tCase.id, tCase.title)}\n`;
 
     const stepLines = tCase.steps.split('\n');
     stepLines.forEach(line => {
@@ -1352,7 +1796,7 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
-  const handleLoadMultipleTestCasesToWorkspace = (cases: DbTestCaseSphere[]) => {
+  const handleLoadMultipleTestCasesToWorkspace = async (cases: DbTestCaseSphere[]) => {
     if (!cases || cases.length === 0) return;
 
     const firstCase = cases[0];
@@ -1365,7 +1809,7 @@ export default function App({ initialTab }: AppProps = {}) {
 
     cases.forEach((tCase) => {
       autoGherkin += `  @${tCase.id}\n`;
-      autoGherkin += `  Scenario: ${tCase.title.replace(/^[^-]+-\s*/, '')}\n`;
+      autoGherkin += `  Scenario: ${getTestCaseDisplayTitle(tCase.id, tCase.title)}\n`;
 
       const stepLines = tCase.steps.split('\n');
       stepLines.forEach(line => {
@@ -1375,6 +1819,63 @@ export default function App({ initialTab }: AppProps = {}) {
       });
       autoGherkin += `\n`;
     });
+
+    const caseTags = [...new Set(
+      cases
+        .map((testCase) => extractPrimaryScenarioTagFromPreconditions(testCase.preconditions))
+        .filter((tag): tag is string => Boolean(tag))
+        .map((tag) => tag.replace(/^@/, '').trim()),
+    )];
+    let sourceFolder = selectedProjectFolder?.trim() ?? '';
+    let suiteTestTag = getSuiteTestTagForProject(selectedProjectFolder);
+
+    try {
+      const response = await fetch('/api/terminal/robot-tags');
+      if (response.ok) {
+        const data = (await response.json()) as { tags?: RobotTestTagEntry[] };
+        const matchingEntries = (data.tags ?? []).filter((entry) =>
+          caseTags.some(
+            (tag) => normalizeExecutionTagValue(entry.tag).toLowerCase() === tag.toLowerCase(),
+          ),
+        );
+        const sourceFolders = [...new Set(
+          matchingEntries
+            .map((entry) => entry.sourceFolder ?? '')
+            .filter((folder) => folder.length > 0),
+        )];
+        if (sourceFolders.length === 1) sourceFolder = sourceFolders[0];
+
+          // Os casos TMS carregam as `[Tags]` individuais (ADIB02, ADIB03,
+          // ...), mas a execução plural representa a feature inteira. Localiza
+          // a suíte Robot dona desses casos e usa exclusivamente sua `Test Tags`.
+          const sourceFiles = new Set(
+            matchingEntries
+              .map((entry) => entry.sourceFile)
+              .filter((file): file is string => Boolean(file)),
+          );
+          const suiteEntry = (data.tags ?? []).find(
+            (entry) => entry.isSuiteTestTag
+              && (sourceFiles.size === 0 || sourceFiles.has(entry.sourceFile ?? ''))
+              && (entry.sourceFolder ?? '') === sourceFolder,
+          );
+          if (suiteEntry) {
+            suiteTestTag = normalizeExecutionTagValue(suiteEntry.tag);
+          }
+      }
+    } catch {
+      // Use the currently selected project as a fallback when tag metadata is unavailable.
+    }
+
+      if (!suiteTestTag) {
+        appendTerminalLog(
+          '[ERRO] Não foi possível localizar a Test Tags da suíte Robot para executar a feature.',
+          'error',
+        );
+        return;
+      }
+
+      const command = buildFeatureRobotCommand(suiteTestTag, sourceFolder, argsFile);
+    setPendingWorkspaceExecution({ command, sourceFolder });
 
     setGherkinContent(autoGherkin);
     appendTerminalLog(`[WORKSPACE] Suite de ${cases.length} casos de teste carregada com sucesso! Pronto para execução completa.`, 'success');
@@ -1393,6 +1894,71 @@ export default function App({ initialTab }: AppProps = {}) {
         console.error("Failed to pushState dynamic URL change: ", e);
       }
     }
+  };
+
+  const handleRunSingleTestCaseReal = async (testCase: DbTestCaseSphere) => {
+    const tag = (
+      extractPrimaryScenarioTagFromPreconditions(testCase.preconditions) ||
+      getSphereCaseBadgeValue(testCase)
+    ).replace(/^@/, '').trim();
+
+    if (!tag) {
+      alert(t(
+        'Não foi possível identificar a tag Robot deste caso de teste.',
+        'The Robot tag for this test case could not be identified.',
+      ));
+      return;
+    }
+
+    let activeTag = executionTags.find(
+      (executionTag) => executionTag.value.toLowerCase() === tag.toLowerCase(),
+    );
+
+    // The TMS standalone screen can be clicked before the initial tag-loading
+    // effect finishes. Resolve the selected case against the source of truth
+    // instead of falling back to the global project/root selection.
+    if (!activeTag) {
+      try {
+        const response = await fetch('/api/terminal/robot-tags');
+        if (response.ok) {
+          const data = (await response.json()) as { tags?: RobotTestTagEntry[] };
+          const sourceEntry = (data.tags ?? []).find(
+            (entry) => normalizeExecutionTagValue(entry.tag).toLowerCase() === tag.toLowerCase(),
+          );
+          if (sourceEntry) {
+            activeTag = {
+              value: normalizeExecutionTagValue(sourceEntry.tag),
+              label: `@${sourceEntry.tag}`,
+              sourceFile: sourceEntry.sourceFile,
+              sourceFolder: sourceEntry.sourceFolder,
+            };
+          }
+        }
+      } catch {
+        // The normal state remains a valid fallback if the metadata endpoint
+        // is temporarily unavailable.
+      }
+    }
+
+    const sourceFolder = activeTag?.sourceFolder ?? selectedProjectFolder ?? undefined;
+    const command = buildSingleTestRobotCommand(tag, sourceFolder);
+
+    // Preserve the existing navigation to the live terminal, but execute only
+    // the selected Robot test instead of creating a temporary multi-step spec.
+    setPendingExecutionOnLoad(false);
+    setIsTestSpecsOpen(false);
+    setActiveTab('terminal');
+
+    if (typeof window !== 'undefined') {
+      try {
+        const newRawUrl = `${window.location.origin}/terminal`;
+        window.history.pushState({ path: newRawUrl }, '', newRawUrl);
+      } catch (error) {
+        console.error('Failed to pushState dynamic URL change: ', error);
+      }
+    }
+
+    void handleRunFeatureReal(tag, { sourceFolder, command });
   };
 
   const handleManualExecutionCompleted = (updatedCase: DbTestCaseSphere) => {
@@ -1421,13 +1987,35 @@ export default function App({ initialTab }: AppProps = {}) {
     );
   };
 
-  const handleSaveCurrentWorkspaceAsCases = () => {
-    const parsed = parseGherkinFeature(gherkinContent);
+  const handleSaveCurrentWorkspaceAsCases = async () => {
+    if (!selectedProjectId) {
+      alert(t(
+        "Selecione ou crie um projeto no TMS antes de importar a feature/pasta.",
+        "Select or create a project in TMS before importing the feature/folder.",
+      ));
+      return;
+    }
+    const parsed = parseRobotGherkinFeature(gherkinContent);
+    // The parser keeps a safety fallback for the initial demo workspace. It is
+    // useful for the UI, but must never turn an invalid upload into real TMS
+    // folders/cases.
+    if (parsed.scenarios.length === 0 || isTwoScenarioFallback(parsed)) {
+      appendTerminalLog(
+        '[TMS] Importação cancelada: nenhum cenário Robot válido foi encontrado no Workspace.',
+        'error',
+      );
+      alert(t(
+        'Nenhum cenário Robot válido foi encontrado para armazenar no TMS.',
+        'No valid Robot scenario was found to store in TMS.',
+      ));
+      return;
+    }
+
     const folderLabel = resolveRobotFolderLabel(
       gherkinContent,
       parsed.title !== 'Jornada TMS - Robot Suite' ? parsed.title : 'Workspace Importados',
     );
-    const folderName = `br.com.grupocard.contacard.dev/${folderLabel}`;
+    const folderName = getSphereFolderDisplayLabel(folderLabel).trim();
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const existingFolders = sqliteDb.test_folders || [];
@@ -1436,85 +2024,407 @@ export default function App({ initialTab }: AppProps = {}) {
       : [...existingFolders, folderName];
 
     const currentCases = sqliteDb.test_cases_sphere || [];
-    const newCasesAdded: DbTestCaseSphere[] = [];
+    const updatedCases = [...currentCases];
+    const importedCaseIds: string[] = [];
+    const importedTitleOccurrences = new Map<string, number>();
+
+    // The same suite may contain distinct Robot tests with identical prose
+    // titles (different tags/IDs). A title-only fallback must not merge those
+    // tests during the same import; stable IDs remain the primary identity.
+    parsed.scenarios.forEach((sc, index) => {
+      const fallbackId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
+      const stableCaseId = buildWorkspaceImportedCaseId(
+        folderName,
+        sc.tags,
+        sc.title,
+        fallbackId,
+      );
+      const importedTitle = buildImportedTestCaseTitle(stableCaseId, sc.title);
+      const titleKey = normalizeImportedCaseTitleForMatch(
+        getTestCaseDisplayTitle(stableCaseId, importedTitle),
+      );
+      importedTitleOccurrences.set(
+        titleKey,
+        (importedTitleOccurrences.get(titleKey) ?? 0) + 1,
+      );
+    });
 
     parsed.scenarios.forEach((sc, index) => {
-      let caseId = "";
-      const tagMatch = sc.tags.find(t => t.match(/^@?RECEL\d+/i) || t.match(/^@?RCT\d+/i) || t.match(/^@?CT\d+/i));
-      if (tagMatch) {
-         caseId = tagMatch.replace(/^@/, '').toUpperCase();
-      } else {
-         caseId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
-      }
+      const fallbackId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
+      const stableCaseId = buildWorkspaceImportedCaseId(
+        folderName,
+        sc.tags,
+        sc.title,
+        fallbackId,
+      );
+      const importedTitle = buildImportedTestCaseTitle(stableCaseId, sc.title);
+      const normalizedImportedTitle = normalizeImportedCaseTitleForMatch(
+        getTestCaseDisplayTitle(stableCaseId, importedTitle),
+      );
+
+      // Match by folder + title as well as the new stable ID. The title match
+      // upgrades records created by the previous implementation (TC-01, ...)
+      // instead of leaving a duplicate behind after the fix.
+      const stableIdIndex = updatedCases.findIndex(
+        (existingCase) => existingCase.folder === folderName && existingCase.id === stableCaseId,
+      );
+      const titleMatchIndexes = updatedCases.reduce<number[]>((indexes, existingCase, caseIndex) => {
+        if (
+          existingCase.folder === folderName &&
+          normalizeImportedCaseTitleForMatch(
+            getTestCaseDisplayTitle(existingCase.id, existingCase.title),
+          ) === normalizedImportedTitle
+        ) {
+          indexes.push(caseIndex);
+        }
+        return indexes;
+      }, []);
+      const canUseUniqueTitleMatch =
+        (importedTitleOccurrences.get(normalizedImportedTitle) ?? 0) === 1 &&
+        titleMatchIndexes.length === 1;
+      const existingIndex = stableIdIndex >= 0
+        ? stableIdIndex
+        : canUseUniqueTitleMatch
+          ? titleMatchIndexes[0]
+          : -1;
+      const existingCase = existingIndex >= 0 ? updatedCases[existingIndex] : undefined;
+      const caseId = existingCase?.id ?? stableCaseId;
 
       const formattedSteps = sc.steps.map(st => `${st.rawType || 'And'} ${st.text}`).join('\n');
-      
-      const newTestCase = {
+
+      const importedCase: DbTestCaseSphere = {
+        ...(existingCase ?? {}),
         id: caseId,
         folder: folderName,
-        title: `${caseId} - Cenário de Teste Positivo - ${sc.title}`,
+        title: buildImportedTestCaseTitle(caseId, sc.title),
         preconditions: `*** Variables ***\n\${DEFAULT_TAG}=    ${sc.tags.map(t => '@' + t.replace(/^@/, '')).join('  ')}`,
         steps: formattedSteps,
         expected_result: sc.steps.filter(st => st.type === 'THEN').map(st => st.text).join('\n') || 'Validar execução com sucesso.',
-        history: [
-          { user: "Reinaldo", action: "created test case from Workspace Import", time: getFormattedTimestamp() }
+        history: existingCase?.history ?? [
+          { user: "Reinaldo", action: "created test case from Workspace Import", time: getFormattedTimestamp() },
         ],
-        created_at: now
+        created_at: existingCase?.created_at ?? now,
       };
 
-      const dupIdx = currentCases.findIndex(c => c.id === caseId);
-      if (dupIdx >= 0) {
-        currentCases[dupIdx] = { ...currentCases[dupIdx], ...newTestCase };
+      if (existingIndex >= 0) {
+        updatedCases[existingIndex] = importedCase;
       } else {
-        newCasesAdded.push(newTestCase);
+        updatedCases.push(importedCase);
       }
+      importedCaseIds.push(caseId);
     });
 
     const updatedDb = {
       ...sqliteDb,
       test_folders: updatedFolders,
-      test_cases_sphere: [...currentCases, ...newCasesAdded]
+      test_cases_sphere: updatedCases,
+      folder_projects: [
+        ...(sqliteDb.folder_projects || []).filter((link) => link.folder_path !== folderName),
+        { folder_path: folderName, project_id: selectedProjectId },
+      ],
     };
 
-    setSqliteDb(updatedDb);
+    try {
+      // Persist before opening the new TMS tab. Otherwise that tab can load
+      // the old snapshot during the debounce window and appear empty.
+      const persistedDb = await apiClient.replaceDatabase(updatedDb);
+      setSqliteDb(persistedDb);
 
-    setSphereTestCaseStatuses(prev => {
+      setSphereTestCaseStatuses(prev => {
       const next = { ...prev };
-      parsed.scenarios.forEach((sc, index) => {
-        let caseId = "";
-        const tagMatch = sc.tags.find(t => t.match(/^@?RECEL\d+/i) || t.match(/^@?RCT\d+/i) || t.match(/^@?CT\d+/i));
-        if (tagMatch) {
-          caseId = tagMatch.replace(/^@/, '').toUpperCase();
-        } else {
-          caseId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
-        }
-        next[caseId] = 'Not executed';
+      importedCaseIds.forEach((caseId) => {
+        next[caseId] = next[caseId] ?? 'Not executed';
       });
       localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(next));
       return next;
+      });
+
+      setSelectedSphereFolder(folderName);
+      setSelectedSphereTestCaseId(importedCaseIds[0] ?? null);
+
+      appendTerminalLog(`[TMS] Sucesso! ${parsed.scenarios.length} cenários importados da Workspace e arquivados no CRUD TMS na pasta '${folderName}'.`, 'success');
+      window.open(`${window.location.origin}/tms`, '_blank');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendTerminalLog(`[TMS] Falha ao persistir a importação: ${message}`, 'error');
+      alert(t(
+        `Não foi possível armazenar os testes no TMS: ${message}`,
+        `The tests could not be stored in TMS: ${message}`,
+      ));
+    }
+  };
+
+  /**
+   * TMS-only persistence flow used by the combined "Importar Testes" action.
+   * It intentionally does not call the Terminal handler above because that
+   * legacy flow opens a new TMS tab after saving.
+   */
+  const handleSaveTmsImportedContentAsCases = async (content: string) => {
+    if (!selectedProjectId) {
+      alert(t(
+        'Selecione ou crie um projeto no TMS antes de importar a feature/pasta.',
+        'Select or create a project in TMS before importing the feature/folder.',
+      ));
+      return;
+    }
+
+    const parsed = parseRobotGherkinFeature(content);
+    if (parsed.scenarios.length === 0 || isTwoScenarioFallback(parsed)) {
+      appendTerminalLog(
+        '[TMS] Importação cancelada: nenhum cenário Robot válido foi encontrado no arquivo.',
+        'error',
+      );
+      alert(t(
+        'Nenhum cenário Robot válido foi encontrado para importar no TMS.',
+        'No valid Robot scenario was found to import into TMS.',
+      ));
+      return;
+    }
+
+    const folderLabel = resolveRobotFolderLabel(
+      content,
+      parsed.title !== 'Jornada TMS - Robot Suite' ? parsed.title : 'Workspace Importados',
+    );
+    const folderName = getSphereFolderDisplayLabel(folderLabel).trim();
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    const existingFolders = sqliteDb.test_folders || [];
+    const updatedFolders = existingFolders.includes(folderName)
+      ? existingFolders
+      : [...existingFolders, folderName];
+
+    const currentCases = sqliteDb.test_cases_sphere || [];
+    const updatedCases = [...currentCases];
+    const importedCaseIds: string[] = [];
+    const importedTitleOccurrences = new Map<string, number>();
+
+    parsed.scenarios.forEach((sc, index) => {
+      const fallbackId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
+      const stableCaseId = buildWorkspaceImportedCaseId(
+        folderName,
+        sc.tags,
+        sc.title,
+        fallbackId,
+      );
+      const importedCaseTitle = buildImportedTestCaseTitle(stableCaseId, sc.title);
+      const titleKey = normalizeImportedCaseTitleForMatch(
+        getTestCaseDisplayTitle(stableCaseId, importedCaseTitle),
+      );
+      importedTitleOccurrences.set(
+        titleKey,
+        (importedTitleOccurrences.get(titleKey) ?? 0) + 1,
+      );
     });
 
-    setSelectedSphereFolder(folderName);
-    if (parsed.scenarios.length > 0) {
-      const firstTag = parsed.scenarios[0].tags.find(t => t.match(/^@?RECEL\d+/i) || t.match(/^@?RCT\d+/i) || t.match(/^@?CT\d+/i));
-      const firstId = firstTag ? firstTag.replace(/^@/, '').toUpperCase() : `TC-${String(currentCases.length + 1).padStart(3, '0')}`;
-      setSelectedSphereTestCaseId(firstId);
+    parsed.scenarios.forEach((sc, index) => {
+      const fallbackId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
+      const stableCaseId = buildWorkspaceImportedCaseId(
+        folderName,
+        sc.tags,
+        sc.title,
+        fallbackId,
+      );
+      const importedCaseTitle = buildImportedTestCaseTitle(stableCaseId, sc.title);
+      const normalizedImportedTitle = normalizeImportedCaseTitleForMatch(
+        getTestCaseDisplayTitle(stableCaseId, importedCaseTitle),
+      );
+
+      const stableIdIndex = updatedCases.findIndex(
+        (existingCase) => existingCase.folder === folderName && existingCase.id === stableCaseId,
+      );
+      const titleMatchIndexes = updatedCases.reduce<number[]>((indexes, existingCase, caseIndex) => {
+        if (
+          existingCase.folder === folderName &&
+          normalizeImportedCaseTitleForMatch(
+            getTestCaseDisplayTitle(existingCase.id, existingCase.title),
+          ) === normalizedImportedTitle
+        ) {
+          indexes.push(caseIndex);
+        }
+        return indexes;
+      }, []);
+      const canUseUniqueTitleMatch =
+        (importedTitleOccurrences.get(normalizedImportedTitle) ?? 0) === 1 &&
+        titleMatchIndexes.length === 1;
+      const existingIndex = stableIdIndex >= 0
+        ? stableIdIndex
+        : canUseUniqueTitleMatch
+          ? titleMatchIndexes[0]
+          : -1;
+      const existingCase = existingIndex >= 0 ? updatedCases[existingIndex] : undefined;
+      const caseId = existingCase?.id ?? stableCaseId;
+
+      const formattedSteps = sc.steps.map((step) => `${step.rawType || 'And'} ${step.text}`).join('\n');
+      const importedCase: DbTestCaseSphere = {
+        ...(existingCase ?? {}),
+        id: caseId,
+        folder: folderName,
+        title: buildImportedTestCaseTitle(caseId, sc.title),
+        preconditions: `*** Variables ***\n\${DEFAULT_TAG}=    ${sc.tags.map((tag) => '@' + tag.replace(/^@/, '')).join('  ')}`,
+        steps: formattedSteps,
+        expected_result: sc.steps.filter((step) => step.type === 'THEN').map((step) => step.text).join('\n') || 'Validar execução com sucesso.',
+        history: existingCase?.history ?? [
+          { user: 'Reinaldo', action: 'created test case from TMS Importar Testes', time: getFormattedTimestamp() },
+        ],
+        created_at: existingCase?.created_at ?? now,
+      };
+
+      if (existingIndex >= 0) {
+        updatedCases[existingIndex] = importedCase;
+      } else {
+        updatedCases.push(importedCase);
+      }
+      importedCaseIds.push(caseId);
+    });
+
+    const updatedDb = {
+      ...sqliteDb,
+      test_folders: updatedFolders,
+      test_cases_sphere: updatedCases,
+      folder_projects: [
+        ...(sqliteDb.folder_projects || []).filter((link) => link.folder_path !== folderName),
+        { folder_path: folderName, project_id: selectedProjectId },
+      ],
+    };
+
+    try {
+      const persistedDb = await apiClient.replaceDatabase(updatedDb);
+      setSqliteDb(persistedDb);
+
+      setSphereTestCaseStatuses((previous) => {
+        const next = { ...previous };
+        importedCaseIds.forEach((caseId) => {
+          next[caseId] = next[caseId] ?? 'Not executed';
+        });
+        localStorage.setItem('cardmais_sphere_statuses', JSON.stringify(next));
+        return next;
+      });
+
+      setSelectedSphereFolder(folderName);
+      setSelectedSphereTestCaseId(importedCaseIds[0] ?? null);
+      setToastMessage(t(
+        `${parsed.scenarios.length} testes importados e salvos no TMS.`,
+        `${parsed.scenarios.length} tests imported and saved to TMS.`,
+      ));
+      setTimeout(() => setToastMessage(null), 3000);
+      appendTerminalLog(
+        `[TMS] Sucesso! ${parsed.scenarios.length} cenários importados e arquivados na pasta '${folderName}'.`,
+        'success',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendTerminalLog(`[TMS] Falha ao persistir a importação: ${message}`, 'error');
+      alert(t(
+        `Não foi possível importar e armazenar os testes no TMS: ${message}`,
+        `The tests could not be imported and stored in TMS: ${message}`,
+      ));
     }
-    
-    appendTerminalLog(`[TMS] Sucesso! ${parsed.scenarios.length} cenários importados da Workspace e arquivados no CRUD TMS na pasta '${folderName}'.`, 'success');
-    window.open(`${window.location.origin}/tms`, '_blank');
+  };
+
+  /** Opens the TMS-only file picker for the combined import/save action. */
+  const handleImportTestsFromTms = () => {
+    if (!selectedProjectId) {
+      alert(t(
+        'Selecione ou crie um projeto no TMS antes de importar testes.',
+        'Select or create a project in TMS before importing tests.',
+      ));
+      return;
+    }
+    tmsImportFileInputRef.current?.click();
+  };
+
+  /** Reads one supported test file and immediately persists its scenarios in TMS. */
+  const handleTmsImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    readFeatureFile(file, (text) => {
+      importFileContent(text, file.name);
+      void handleSaveTmsImportedContentAsCases(text);
+    });
+  };
+
+  const handleCancelRobotExecution = () => {
+    if (!executionAbortControllerRef.current) return;
+    appendTerminalLog('[SYSTEM] Cancelamento solicitado pelo operador.', 'warn');
+    const runId = activeRobotRunIdRef.current;
+    if (runId) {
+      void fetch('/api/terminal/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      }).catch(() => {
+        appendTerminalLog('[SYSTEM] Não foi possível confirmar o cancelamento no servidor.', 'warn');
+      });
+    }
+    executionAbortControllerRef.current.abort();
   };
 
   /** Execução real Robot (Terminal Ao Vivo / Executar Feature / cenário único). */
-  const handleRunFeatureReal = async (tagOverride?: string) => {
+  const handleRunFeatureReal = async (
+    tagOverride?: string,
+    runOptions?: { sourceFolder?: string; command?: string },
+  ) => {
     if (isExecuting) return;
 
-    const tag = (tagOverride?.replace(/^@/, '').trim() || filterTag.trim());
+    let tag = tagOverride?.replace(/^@/, '').trim()
+      || filterTag.trim()
+      || getSuiteTestTagForProject(selectedProjectFolder);
+    let resolvedProjectFolder = selectedProjectFolder?.trim() ?? '';
     if (!tag) {
+      const storedTestTag = getSuiteTestTagForProject(selectedProjectFolder);
+      if (storedTestTag) {
+        tag = storedTestTag;
+        setFilterTag(storedTestTag);
+      }
+    }
+
+    // Reports pode disparar a execução antes que o estado do Terminal tenha
+    // sido carregado. Resolve a `Test Tags` e sua pasta diretamente da fonte
+    // de verdade para não executar `./` no diretório raiz do TMS.
+    if (!tagOverride && (!tag || !resolvedProjectFolder)) {
+      try {
+        const response = await fetch('/api/terminal/robot-tags');
+        if (response.ok) {
+          const data = (await response.json()) as { tags?: RobotTestTagEntry[] };
+          const projectTag = (data.tags ?? []).find((entry) =>
+            entry.isSuiteTestTag
+              && (!resolvedProjectFolder || (entry.sourceFolder ?? '') === resolvedProjectFolder),
+          );
+          if (projectTag) {
+            tag = normalizeExecutionTagValue(projectTag.tag);
+            resolvedProjectFolder = projectTag.sourceFolder ?? '';
+            setFilterTag(tag);
+            setSelectedProjectFolder(resolvedProjectFolder);
+            setExecutionTags((previous) => {
+              if (previous.some((entry) =>
+                entry.value === tag && (entry.sourceFolder ?? '') === resolvedProjectFolder,
+              )) return previous;
+              return [
+                ...previous,
+                {
+                  value: tag,
+                  label: `@${tag} (${projectTag.sourceFile ?? 'Robot'})`,
+                  sourceFile: projectTag.sourceFile,
+                  sourceFolder: projectTag.sourceFolder,
+                  isSuiteTestTag: true,
+                },
+              ];
+            });
+          }
+        }
+      } catch {
+        // The validation below reports a useful message if no project tag exists.
+      }
+    }
+
+    if (!tag && !selectedProjectFolder) {
       appendTerminalLog(
         t(
-          '[ERRO] Nenhuma tag Robot selecionada. Abra Configurar tag e selecione uma tag (Test Tags ou [Tags]).',
-          '[ERROR] No Robot tag selected. Open Configure tag and pick a Test Tags or [Tags] entry.',
+          '[ERRO] Nenhuma tag/projeto selecionado. Selecione um projeto em test_projects/ ou uma tag Robot.',
+          '[ERROR] No project/tag selected. Choose a project in test_projects/ or a Robot tag.',
         ),
         'error',
       );
@@ -1522,12 +2432,33 @@ export default function App({ initialTab }: AppProps = {}) {
     }
     setIsExecuting(true);
     setTerminalLogs([]);
+    setRobotExecutionProgress(INITIAL_ROBOT_EXECUTION_PROGRESS);
 
     const active = executionTags.find((t) => t.value === tag);
-    const cmd = buildFeatureRobotCommand(tag, active?.sourceFile);
+    const effectiveProjectFolder = runOptions?.sourceFolder !== undefined
+      ? runOptions.sourceFolder.trim()
+      : resolvedProjectFolder
+        ? resolvedProjectFolder
+        : active?.sourceFolder ?? '';
+    const normalizedProjectFolder = effectiveProjectFolder.trim();
+    const selectedProjectPath = normalizedProjectFolder
+      ? `test_projects/${normalizedProjectFolder}/`
+      : 'test_projects/';
+    const cmd = withRobotOutputDirectory(
+      runOptions?.command ?? buildFeatureRobotCommand(
+        tag,
+        normalizedProjectFolder,
+        argsFile,
+      ),
+      robotResultsDirectory,
+    );
     const timestamp = formatRobotRunTimestamp();
     const runFolder = createRunFolderForTimestamp(timestamp);
+    const abortController = new AbortController();
+    executionAbortControllerRef.current = abortController;
+    activeRobotRunIdRef.current = runFolder;
 
+    appendTerminalLog(`[PROJECT] ${selectedProjectPath}`, 'info');
     appendTerminalLog(`$ ${cmd}`, 'cmd');
 
     let lineBuffer = '';
@@ -1536,18 +2467,47 @@ export default function App({ initialTab }: AppProps = {}) {
       const lines = lineBuffer.split(/\r?\n/);
       lineBuffer = lines.pop() ?? '';
       for (const line of lines) {
-        if (line.length > 0) appendTerminalLog(line, 'info');
+        if (line.length > 0) {
+          appendTerminalLog(line, 'info');
+          setRobotExecutionProgress((current) => updateRobotExecutionProgress(current, line));
+        }
       }
     };
 
     try {
-      const { aborted } = await runRobotCommandStreaming(cmd, runFolder, onChunk);
-      if (lineBuffer.trim()) appendTerminalLog(lineBuffer.trim(), 'info');
+      const { aborted } = await runRobotCommandStreaming(
+        cmd,
+        runFolder,
+        onChunk,
+        abortController.signal,
+        normalizedProjectFolder || undefined,
+      );
+      if (lineBuffer.trim()) {
+        appendTerminalLog(lineBuffer.trim(), 'info');
+        setRobotExecutionProgress((current) =>
+          updateRobotExecutionProgress(current, lineBuffer.trim()),
+        );
+      }
 
-      if (!aborted) {
+      if (aborted) {
+        appendTerminalLog('[SYSTEM] Execução cancelada.', 'warn');
+        return;
+      }
+
+      // A captura de report.html/log.html pode ser demorada (uma imagem por
+      // cenário). Não mantenha o console em estado "executando" enquanto o
+      // Robot já terminou: persiste e tenta obter o report em segundo plano.
+      appendTerminalLog('[TMS] Processando output.xml e tentando capturar o report para Relatórios...', 'info');
+      void (async () => {
         const result = await persistRobotRunOutput(runFolder, cmd, timestamp);
         if (result.ok) {
           const { execution, testCases, steps } = result.data;
+          setRobotExecutionProgress({
+            total: execution.total_tests,
+            passed: execution.passed,
+            failed: execution.failed,
+            isFinal: true,
+          });
           const refreshedDb = await apiClient.getDatabase();
           setSqliteDb((prev) => ({
             ...prev,
@@ -1572,19 +2532,27 @@ export default function App({ initialTab }: AppProps = {}) {
             `[TMS] Execução registrada: ${execution.id} — ${execution.total_tests} testes (${execution.passed} ok, ${execution.failed} falhas).`,
             'success',
           );
-          if (execution.report_screenshot_path) {
-            appendTerminalLog(
-              '[TMS] Report Robot capturado (report.html + log por cenário) para o PDF.',
-              'info',
-            );
-          }
+          appendTerminalLog(
+            execution.report_screenshot_path
+              ? '[TMS] Report Robot capturado (report.html + log por cenário) para Relatórios e PDF.'
+              : '[TMS] Report Robot não pôde ser capturado; a execução permanece disponível nos Relatórios.',
+            execution.report_screenshot_path ? 'info' : 'warn',
+          );
         } else {
           appendTerminalLog(`[TMS] Sem persistência: ${result.error}`, 'warn');
         }
-      }
+      })().catch((error) => {
+        appendTerminalLog(`[TMS] Falha ao processar relatório: ${(error as Error).message}`, 'warn');
+      });
     } catch (err) {
       appendTerminalLog(`[ERRO] ${(err as Error).message}`, 'error');
     } finally {
+      if (executionAbortControllerRef.current === abortController) {
+        executionAbortControllerRef.current = null;
+      }
+      if (activeRobotRunIdRef.current === runFolder) {
+        activeRobotRunIdRef.current = null;
+      }
       setIsExecuting(false);
     }
   };
@@ -1592,9 +2560,11 @@ export default function App({ initialTab }: AppProps = {}) {
   useEffect(() => {
     if (pendingExecutionOnLoad && parsedFeature && !isExecuting) {
       setPendingExecutionOnLoad(false);
-      void handleRunFeatureReal();
+      const workspaceExecution = pendingWorkspaceExecution;
+      setPendingWorkspaceExecution(null);
+      void handleRunFeatureReal(undefined, workspaceExecution ?? undefined);
     }
-  }, [parsedFeature, pendingExecutionOnLoad, isExecuting]);
+  }, [parsedFeature, pendingExecutionOnLoad, pendingWorkspaceExecution, isExecuting]);
 
   const renderTMSStandalone = () => {
     return (
@@ -1613,6 +2583,14 @@ export default function App({ initialTab }: AppProps = {}) {
           accept=".md,text/markdown"
           className="hidden"
           onChange={handleAcceptanceDocFileChange}
+        />
+        <input
+          ref={tmsImportFileInputRef}
+          type="file"
+          accept=".feature,.txt,.robot"
+          className="hidden"
+          onChange={handleTmsImportFileChange}
+          data-testid="tms-import-tests-file-input"
         />
 
         {/* Header */}
@@ -1661,6 +2639,157 @@ export default function App({ initialTab }: AppProps = {}) {
           
           {/* Left Pane (Folder Tree) */}
           <div className="w-[24%] flex flex-col bg-slate-50 p-3 min-w-[240px] h-full overflow-hidden shrink-0">
+            {/* Active Project selector — Projeto atrelado às pastas/features importadas */}
+            <div className="flex flex-col gap-2 mb-3 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+              <span className="text-[10px] text-slate-500 uppercase font-mono font-extrabold tracking-wider flex items-center gap-1.5 px-0.5">
+                <Briefcase className="w-3 h-3 text-indigo-500" />
+                {t("Projeto Ativo", "Active Project")}
+              </span>
+              <div className="flex items-stretch gap-1.5">
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  title={t(
+                    "Projeto ao qual novas pastas/features importadas serão atreladas",
+                    "Project new imported folders/features will be linked to",
+                  )}
+                >
+                  {(sqliteDb.projects || []).length === 0 && (
+                    <option value="">{t("Nenhum projeto cadastrado", "No project registered")}</option>
+                  )}
+                  {(sqliteDb.projects || []).map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingProject(true);
+                    setIsEditingProject(false);
+                  }}
+                  className="h-8 w-8 shrink-0 flex items-center justify-center text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg border border-sky-100 transition-all cursor-pointer"
+                  title={t("Criar Novo Projeto", "Create New Project")}
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedProjectId) {
+                      alert(t("Selecione um projeto para renomear.", "Select a project to rename."));
+                      return;
+                    }
+                    const current = (sqliteDb.projects || []).find((p) => p.id === selectedProjectId);
+                    setEditProjectNameValue(current?.name ?? '');
+                    setEditProjectDetailsValue(current?.details ?? '');
+                    setEditProjectPlatformValue(current?.platform ?? 'Web');
+                    setIsEditingProject(true);
+                    setIsCreatingProject(false);
+                  }}
+                  disabled={!selectedProjectId}
+                  className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-lg border transition-all ${
+                    selectedProjectId
+                      ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400 cursor-pointer'
+                      : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
+                  }`}
+                  title={t("Renomear Projeto Selecionado", "Rename Selected Project")}
+                >
+                  <Edit className="w-3.5 h-3.5 stroke-[2]" />
+                </button>
+              </div>
+
+              {isCreatingProject && (
+                <div className="flex flex-col gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder={t("Nome do novo projeto", "New project name")}
+                    value={newProjectNameValue}
+                    onChange={(e) => setNewProjectNameValue(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <textarea
+                    placeholder={t("Detalhes do Projeto", "Project Details")}
+                    value={newProjectDetailsValue}
+                    onChange={(e) => setNewProjectDetailsValue(e.target.value)}
+                    rows={2}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 resize-none focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <select
+                    value={newProjectPlatformValue}
+                    onChange={(e) => setNewProjectPlatformValue(e.target.value as ProjectPlatform)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    title={t("Plataforma", "Platform")}
+                  >
+                    <option value="Web">{t("Web", "Web")}</option>
+                    <option value="Mobile">{t("Mobile", "Mobile")}</option>
+                    <option value="Desktop">{t("Desktop", "Desktop")}</option>
+                  </select>
+                  <div className="flex gap-1 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingProject(false)}
+                      className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+                    >
+                      {t("Cancelar", "Cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateProject(newProjectNameValue, newProjectDetailsValue, newProjectPlatformValue)}
+                      className="text-[10px] font-mono px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                    >
+                      {t("Criar", "Create")}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isEditingProject && (
+                <div className="flex flex-col gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder={t("Novo nome do projeto", "New project name")}
+                    value={editProjectNameValue}
+                    onChange={(e) => setEditProjectNameValue(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <textarea
+                    placeholder={t("Detalhes do Projeto", "Project Details")}
+                    value={editProjectDetailsValue}
+                    onChange={(e) => setEditProjectDetailsValue(e.target.value)}
+                    rows={2}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 resize-none focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <select
+                    value={editProjectPlatformValue}
+                    onChange={(e) => setEditProjectPlatformValue(e.target.value as ProjectPlatform)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    title={t("Plataforma", "Platform")}
+                  >
+                    <option value="Web">{t("Web", "Web")}</option>
+                    <option value="Mobile">{t("Mobile", "Mobile")}</option>
+                    <option value="Desktop">{t("Desktop", "Desktop")}</option>
+                  </select>
+                  <div className="flex gap-1 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProject(false)}
+                      className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+                    >
+                      {t("Cancelar", "Cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateProjectName(selectedProjectId, editProjectNameValue, editProjectDetailsValue, editProjectPlatformValue)}
+                      className="text-[10px] font-mono px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                    >
+                      {t("Salvar", "Save")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Redesigned Folder Action Center slightly below the main count to enrich UX */}
             <div className="flex flex-col gap-2.5 mb-3 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
               <div className="flex items-center justify-between px-0.5">
@@ -1786,6 +2915,20 @@ export default function App({ initialTab }: AppProps = {}) {
                   <span className="text-[10px] font-mono font-black hidden sm:inline">{t("Exportar PDF", "Export PDF")}</span>
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={handleImportTestsFromTms}
+                disabled={!selectedProjectId}
+                data-testid="tms-import-tests-button"
+                className="h-9 w-full px-2.5 text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 disabled:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed rounded-lg transition-all border border-sky-200 hover:border-sky-500 disabled:border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer font-bold"
+                title={t(
+                  "Importar um arquivo de testes e salvar todos os cenários no TMS",
+                  "Import a test file and save all scenarios in TMS",
+                )}
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-[10px] font-mono font-black">{t("Importar Testes", "Import Tests")}</span>
+              </button>
             </div>
 
             {isCreatingFolder && (
@@ -1868,12 +3011,18 @@ export default function App({ initialTab }: AppProps = {}) {
               </div>
 
               {/* Render standard folders */}
-              {(sqliteDb.test_folders || []).map((folder, i) => {
+              {sortedSphereFolders.map((folder) => {
                 const isSelected = selectedSphereFolder === folder;
-                const folderLabel = folder.replace('br.com.grupocard.contacard.dev/', '');
+                const folderLabel = getSphereFolderDisplayLabel(folder);
+                const folderProjectId = (sqliteDb.folder_projects || []).find(
+                  (link) => link.folder_path === folder,
+                )?.project_id;
+                const folderProjectName = folderProjectId
+                  ? (sqliteDb.projects || []).find((p) => p.id === folderProjectId)?.name
+                  : undefined;
                 return (
                   <div
-                    key={i}
+                    key={folder}
                     onClick={() => {
                       setSelectedSphereFolder(folder);
                       const filtered = (sqliteDb.test_cases_sphere || []).filter(tc => tc.folder === folder);
@@ -1881,6 +3030,7 @@ export default function App({ initialTab }: AppProps = {}) {
                       setIsCreatingSphereTestCase(false);
                       setIsEditingSphereTestCase(false);
                     }}
+                    data-testid="tms-folder-entry"
                     className={`p-3 rounded-xl flex items-center gap-2.5 text-left text-[11.5px] cursor-pointer transition-all border ${
                       isSelected
                         ? 'bg-sky-50/70 border-sky-500 border-l-[5px] border-l-sky-500 text-sky-700 font-extrabold shadow-sm'
@@ -1893,8 +3043,19 @@ export default function App({ initialTab }: AppProps = {}) {
                     ) : (
                       <Folder className="w-4 h-4 shrink-0 text-slate-400" />
                     )}
-                    <span className="truncate font-semibold">{folderLabel}</span>
-                    <span className={`ml-auto font-mono text-[9.5px] px-1.5 py-0.2 rounded-full font-bold ${
+                    <span className="flex flex-col min-w-0 flex-1">
+                      <span className="truncate font-semibold">{folderLabel}</span>
+                      {folderProjectName && (
+                        <span
+                          className="truncate text-[9px] font-mono font-bold text-indigo-700 flex items-center gap-1"
+                          title={t(`Projeto: ${folderProjectName}`, `Project: ${folderProjectName}`)}
+                        >
+                          <Briefcase className="w-2.5 h-2.5 shrink-0" />
+                          {folderProjectName}
+                        </span>
+                      )}
+                    </span>
+                    <span data-testid="tms-folder-case-count" className={`ml-auto font-mono text-[9.5px] px-1.5 py-0.2 rounded-full font-bold shrink-0 ${
                       isSelected ? 'bg-sky-200/60 text-sky-850' : 'bg-slate-200/80 text-slate-600'
                     }`}>
                       {(sqliteDb.test_cases_sphere || []).filter(tc => tc.folder === folder).length}
@@ -1964,7 +3125,8 @@ export default function App({ initialTab }: AppProps = {}) {
                     if (!searchSphereQuery.trim()) return true;
                     const query = searchSphereQuery.toLowerCase();
                     return tc.id.toLowerCase().includes(query) || tc.title.toLowerCase().includes(query);
-                  });
+                  })
+                  .sort(compareSphereCasesByTag);
 
                 if (filteredCases.length === 0) {
                   return (
@@ -1976,7 +3138,7 @@ export default function App({ initialTab }: AppProps = {}) {
 
                 return filteredCases.map((tc) => {
                   const isSelected = selectedSphereTestCaseId === tc.id;
-                  const cleanTitle = tc.title.replace(/^[^-]+-\s*(Cenário de Teste Positivo - |Cenário de Teste Alternativo - )?/i, '');
+                  const cleanTitle = getTestCaseDisplayTitle(tc.id, tc.title);
                   
                   return (
                     <div
@@ -1995,11 +3157,8 @@ export default function App({ initialTab }: AppProps = {}) {
                       <div className="flex items-center justify-between gap-1.5">
                         <span className={`font-mono text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
                           isSelected ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-                        }`}>
-                          {tc.id}
-                        </span>
-                        <span className="font-mono text-[9px] text-slate-400 block truncate max-w-[140px]" title={tc.folder}>
-                          {tc.folder.split('/').pop()}
+                        }`} data-testid="tms-case-tag">
+                          {getSphereCaseBadgeValue(tc)}
                         </span>
                       </div>
                       
@@ -2019,9 +3178,10 @@ export default function App({ initialTab }: AppProps = {}) {
                 onClick={() => {
                   const count = (sqliteDb.test_cases_sphere || []).length + 1;
                   const nextId = `RECEL${String(count).padStart(2, '0')}`;
+                  const defaultFolder = resolveDefaultSphereFolder(sqliteDb.test_folders || []);
                   const nCase = {
                     id: nextId,
-                    folder: selectedSphereFolder === 'all' ? 'br.com.grupocard.contacard.dev/Recarga de telefone' : selectedSphereFolder,
+                    folder: selectedSphereFolder === 'all' ? defaultFolder : selectedSphereFolder,
                     title: `${nextId} - Cenário de Teste Positivo - Nova recarga rápida de telefone inteligente`,
                     preconditions: `*** Variables ***\n\${DEFAULT_CPF}=    03533062236`,
                     steps: `Dado que o cliente realiza a recarga básica\nQuando insere DDD e número válido\nEntão a operação é concluída com impressão de comprovante.`,
@@ -2085,6 +3245,11 @@ export default function App({ initialTab }: AppProps = {}) {
                       placeholder="RECEL17"
                       className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono text-xs text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
                     />
+                    {resolvedRobotResultsDirectory && (
+                      <p className="text-[10px] leading-normal text-slate-500 font-mono break-all">
+                        {t('Caminho físico atual:', 'Current physical path:')} <strong className="text-slate-300">{resolvedRobotResultsDirectory}</strong>
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 text-left">
                     <label className="text-slate-500 font-mono text-[10px] font-bold">{t("PASTA DESTINO:", "DESTINATION FOLDER:")}</label>
@@ -2151,8 +3316,21 @@ export default function App({ initialTab }: AppProps = {}) {
                     placeholder="Ex: Observações adicionais ou regras específicas para este caso de teste."
                     value={formSphereObservation}
                     onChange={(e) => setFormSphereObservation(e.target.value)}
+                    data-testid="tms-observation-input"
                     className="bg-orange-50/30 border border-orange-200 rounded-lg px-3 py-2 text-xs text-slate-850 focus:bg-white focus:border-orange-400 focus:outline-none placeholder:text-slate-400 resize-y"
                   />
+                  {isEditingSphereTestCase && (
+                    <label className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono font-bold text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={applyObservationToFolder}
+                        onChange={(e) => setApplyObservationToFolder(e.target.checked)}
+                        data-testid="tms-apply-observation-to-folder"
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
+                      />
+                      {t("Aplicar para todos os testes.", "Apply to all tests.")}
+                    </label>
+                  )}
                 </div>
 
                 {/* Actions Form */}
@@ -2162,6 +3340,7 @@ export default function App({ initialTab }: AppProps = {}) {
                     onClick={() => {
                       setIsCreatingSphereTestCase(false);
                       setIsEditingSphereTestCase(false);
+                      setApplyObservationToFolder(false);
                     }}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border border-slate-200"
                   >
@@ -2191,10 +3370,13 @@ export default function App({ initialTab }: AppProps = {}) {
                           steps: formSphereSteps,
                           expected_result: formSphereExpectedResult,
                           observation: formSphereObservation
+                        }, {
+                          applyObservationToFolder,
                         });
                       }
                     }}
                     className="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-xl text-xs font-mono font-black transition-all cursor-pointer shadow-sm shadow-sky-600/10"
+                    data-testid="tms-save-case-button"
                   >
                     {t("Salvar", "Save")}
                   </button>
@@ -2215,12 +3397,11 @@ export default function App({ initialTab }: AppProps = {}) {
 
                 return (
                   <div className="flex flex-col gap-5 text-left max-w-4xl mx-auto w-full animate-fade-in font-sans">
-                    {/* Title details */}
                     <div className="border-b border-slate-200 pb-3 bg-white">
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-[10px] font-black bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md border border-sky-200/80 uppercase">
-                            {currentCase.id}
+                            {getSphereCaseBadgeValue(currentCase)}
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono">{currentCase.created_at || t("A pouco", "Just now")}</span>
                         </div>
@@ -2234,7 +3415,7 @@ export default function App({ initialTab }: AppProps = {}) {
                       </div>
                       
                       <h3 className="text-[15px] font-extrabold text-slate-800 mt-1.5 leading-snug font-sans">
-                        {currentCase.title}
+                        {getTestCaseDisplayTitle(currentCase.id, currentCase.title)}
                       </h3>
 
                       {/* Detail Tabs */}
@@ -2466,10 +3647,12 @@ export default function App({ initialTab }: AppProps = {}) {
                             setFormSphereSteps(currentCase.steps);
                             setFormSphereExpectedResult(currentCase.expected_result);
                             setFormSphereObservation(currentCase.observation || '');
+                            setApplyObservationToFolder(false);
                             setIsEditingSphereTestCase(true);
                             setIsCreatingSphereTestCase(false);
                           }}
                           className="bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200 font-bold px-3.5 py-2 rounded-xl text-xs transition-all font-mono flex items-center gap-1 cursor-pointer"
+                          data-testid="tms-edit-case-button"
                         >
                           <Edit className="w-3.5 h-3.5 text-sky-600" />
                           {t("Editar", "Edit")}
@@ -2486,10 +3669,10 @@ export default function App({ initialTab }: AppProps = {}) {
                         <button
                           type="button"
                           onClick={() => {
-                            handleLoadTestCaseToWorkspace(currentCase.id);
+                            handleRunSingleTestCaseReal(currentCase);
                           }}
                           className="bg-[#FF6600] hover:bg-[#E05500] text-white font-extrabold px-4.5 py-2 rounded-xl text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-[#FF6600]/10 cursor-pointer ml-1"
-                          title={t("Carregar e executar este caso de teste automatizado", "Load and execute this automated test case")}
+                          title={t("Executar somente este caso pela tag Robot", "Run only this test case by its Robot tag")}
                         >
                           <PlayCircle className="w-4 h-4 text-white stroke-[2.5px] fill-transparent" />
                           {t("Executar Teste Automatizado", "Run Automated Test")}
@@ -2563,7 +3746,7 @@ export default function App({ initialTab }: AppProps = {}) {
 
           <div className="hidden md:flex items-center gap-2 bg-slate-950 px-3 py-1.5 border border-slate-800 rounded-lg text-xs font-mono">
             <span className="text-slate-400 uppercase font-bold text-[9px]">{t("Repositório de Relatórios:", "Report Store:")}</span>
-            <span className="text-[#FF6600] font-sans font-semibold">%ROBOT_HOME%/results/</span>
+            <span className="text-[#FF6600] font-sans font-semibold">{robotResultsDirectory}</span>
           </div>
 
           {/* Language Switcher */}
@@ -2654,13 +3837,29 @@ export default function App({ initialTab }: AppProps = {}) {
           <div className="w-full lg:w-[420px] bg-slate-900 border-r border-slate-800 flex flex-col p-5 overflow-y-auto shrink-0 gap-5">
           
           {/* CLI execution configuration */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3" data-testid="terminal-robot-arguments-panel">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-800/60">
               <Sliders className="w-4 h-4 text-[#FF6600]" />
               <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">{t("Argumentos do Robot Framework", "Robot Framework Arguments")}</h3>
             </div>
             
             <div className="flex flex-col gap-2 text-xs">
+              {projectOptions.length > 0 && (
+                <div>
+                  <label className="block text-slate-400 font-mono text-[10px] mb-1">{t("Selecionar Projeto (test_projects/):", "Select Project (test_projects/):")}</label>
+                  <select
+                    value={selectedProjectFolder ?? ''}
+                    onChange={(e) => handleSelectProject(e.target.value)}
+                    data-testid="terminal-project-select"
+                    className="w-full bg-slate-900 border border-slate-700/60 rounded px-2.5 py-1.5 focus:outline-none focus:border-[#FF6600] font-mono text-slate-200"
+                  >
+                    {projectOptions.map((project) => (
+                      <option key={project.folder} value={project.folder}>{project.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <label className="block text-slate-400 font-mono text-[10px]">{t("Tag de Execução (-i / --include):", "Execution Tag (-i / --include):")}</label>
@@ -2669,6 +3868,7 @@ export default function App({ initialTab }: AppProps = {}) {
                     onClick={() => {
                       void refreshExecutionTagsFromRobotSample().then(() => setIsTagModalOpen(true));
                     }}
+                    data-testid="terminal-configure-tag-button"
                     className="text-[10px] text-[#FF6600] border border-[#FF6600]/30 hover:border-[#FF6600]/60 hover:bg-[#FF6600]/10 px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all font-bold"
                   >
                     <Settings className="w-3.5 h-3.5" />
@@ -2678,9 +3878,10 @@ export default function App({ initialTab }: AppProps = {}) {
                 <select 
                   value={filterTag}
                   onChange={(e) => setFilterTag(e.target.value)}
+                  data-testid="terminal-execution-tag-select"
                   className="w-full bg-slate-900 border border-slate-700/60 rounded px-2.5 py-1.5 focus:outline-none focus:border-[#FF6600] font-mono text-slate-200"
                 >
-                  {executionTags.map(tag => (
+                  {tagsForSelectedProject.map(tag => (
                     <option key={tag.value} value={tag.value}>{tag.label}</option>
                   ))}
                 </select>
@@ -2692,12 +3893,13 @@ export default function App({ initialTab }: AppProps = {}) {
                   type="text" 
                   value={argsFile}
                   onChange={(e) => setArgsFile(e.target.value)}
+                  data-testid="terminal-args-file-input"
                   className="w-full bg-slate-900 border border-slate-700/60 rounded px-2.5 py-1.5 focus:outline-none focus:border-[#FF6600] font-mono text-slate-200"
                 />
               </div>
 
               {/* Live Preview Command */}
-              <div className="p-2.5 bg-slate-950 rounded border border-slate-800 text-[10px] font-mono text-slate-400">
+              <div className="p-2.5 bg-slate-950 rounded border border-slate-800 text-[10px] font-mono text-slate-400" data-testid="terminal-compiled-command">
                 <span className="text-[#FF6600] block uppercase tracking-wider font-extrabold text-[9px] mb-1">{t("Comando Final Compilado:", "Final Compiled Command:")}</span>
                 <span className="break-all">{getCompiledCommand()}</span>
               </div>
@@ -2709,6 +3911,7 @@ export default function App({ initialTab }: AppProps = {}) {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            data-testid="terminal-workspace-panel"
             className={`bg-slate-950/80 border rounded-xl p-4 flex-1 flex flex-col gap-3 min-h-[350px] relative transition-all duration-200 ${
               isDraggingFile ? 'border-[#FF6600] bg-slate-900/60 shadow-lg shadow-[#FF6600]/10' : 'border-slate-800'
             }`}
@@ -2716,9 +3919,11 @@ export default function App({ initialTab }: AppProps = {}) {
             {/* Invisible File Input */}
             <input 
               type="file" 
+              id="terminal-file-input"
               ref={fileInputRef} 
               onChange={handleFileChange} 
               accept=".feature,.txt,.robot" 
+              data-testid="terminal-file-input"
               className="hidden" 
             />
 
@@ -2742,6 +3947,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
+                    data-testid="terminal-import-file-button"
                     className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-slate-850 hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
                     title={t("Selecione um arquivo Gherkin/Robot do seu computador", "Select Gherkin/Robot file from your computer")}
                   >
@@ -2754,6 +3960,7 @@ export default function App({ initialTab }: AppProps = {}) {
                       setGherkinTempText(gherkinContent);
                       setIsEditingGherkin(true);
                     }}
+                    data-testid="terminal-edit-gherkin-button"
                     className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1"
                   >
                     <Edit className="w-3.5 h-3.5 text-sky-400" />
@@ -2762,6 +3969,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   <button
                     type="button"
                     onClick={handleSaveCurrentWorkspaceAsCases}
+                    data-testid="terminal-store-tests-button"
                     className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-amber-800/60 hover:border-amber-700 text-amber-400 transition-all font-mono flex items-center gap-1 font-bold"
                     title={t("Armazenar todos os cenários individuais como casos de teste no TMS", "Store all individual scenarios as test cases in TMS")}
                   >
@@ -2774,6 +3982,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   <button
                     type="button"
                     onClick={handleSaveGherkin}
+                    data-testid="terminal-save-gherkin-button"
                     className="text-[10px] bg-emerald-950 hover:bg-emerald-900 px-2.5 py-1 rounded border border-emerald-800 text-emerald-400 font-bold transition-all"
                   >
                     {t("Salvar", "Save")}
@@ -2781,6 +3990,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   <button
                     type="button"
                     onClick={() => setIsEditingGherkin(false)}
+                    data-testid="terminal-cancel-gherkin-button"
                     className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2.5 py-1 rounded border border-slate-700 text-slate-400 transition-all"
                   >
                     {t("Cancelar", "Cancel")}
@@ -2812,13 +4022,14 @@ export default function App({ initialTab }: AppProps = {}) {
 
                   <span className="text-[10px] text-slate-400 uppercase font-mono block mb-2">{t("Cenários Mapeados pelo Parser", "Scenarios Mapped by Parser")} ({parsedFeature.scenarios.length})</span>
                   
-                  <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1.5" data-testid="terminal-scenario-list">
                     {parsedFeature.scenarios.map((sc, idx) => {
                       const isSelected = selectedScenarioId === sc.id;
                       return (
                         <div 
                           key={sc.id}
                           onClick={() => setSelectedScenarioId(isSelected ? null : sc.id)}
+                            data-testid={`terminal-scenario-card-${sc.id}`}
                           className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
                             isSelected 
                               ? 'bg-slate-900 border-[#FF6600]/50 shadow-sm shadow-[#FF6600]/10' 
@@ -2920,6 +4131,7 @@ export default function App({ initialTab }: AppProps = {}) {
                                     void handleRunFeatureReal(tagToUse);
                                     setActiveTab('terminal');
                                   }}
+                                  data-testid={`terminal-scenario-run-${sc.id}`}
                                   className="flex items-center gap-1.5 bg-[#FF6600] hover:bg-[#E05500] text-white px-2.5 py-1.5 rounded-md font-bold font-sans text-[10px] transition-all uppercase tracking-wider shadow-md shadow-[#FF6600]/10 select-none cursor-pointer"
                                   title={t(`Executar somente o teste selecionado: ${sc.title}`, `Run only the selected test: ${sc.title}`)}
                                 >
@@ -2935,7 +4147,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   </div>
                 </div>
                 
-                <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400 bg-slate-950">
+                <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400 bg-slate-950" data-testid="terminal-validation-status">
                   <span>{t("Validação Automática", "Automatic Validation")}</span>
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> {t("Sintaxe Gherkin Válida", "Valid Gherkin Syntax")}
@@ -3012,6 +4224,7 @@ export default function App({ initialTab }: AppProps = {}) {
                   type="button"
                   onClick={() => handleRunFeatureReal()}
                   disabled={isExecuting}
+                  data-testid="terminal-execute-feature-button"
                   className="flex items-center gap-2 bg-[#FF6600] hover:bg-[#FF6600]/90 text-white font-black text-xs px-5 py-2.5 rounded-lg shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none cursor-pointer"
                   title={t('Executar todos os testes da feature (.feature)', 'Run all feature tests (.feature)')}
                 >
@@ -3027,6 +4240,18 @@ export default function App({ initialTab }: AppProps = {}) {
                     </>
                   )}
                 </button>
+                {isExecuting && (
+                  <button
+                    type="button"
+                    onClick={handleCancelRobotExecution}
+                    data-testid="terminal-cancel-execution-button"
+                    className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-500/10 px-4 py-2.5 text-xs font-black text-rose-300 transition-all hover:border-rose-400 hover:bg-rose-500/20 active:scale-95"
+                    title={t('Interromper a execução Robot em andamento', 'Stop the running Robot execution')}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    <span>{t('Cancelar Execução', 'Cancel Execution')}</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -3065,6 +4290,7 @@ export default function App({ initialTab }: AppProps = {}) {
                           setTerminalLogs([]);
                           appendTerminalLog(t('[SYSTEM] Console limpo pelo usuário.', '[SYSTEM] Console cleared by user.'), 'warn');
                         }}
+                        data-testid="terminal-clear-log-button"
                         className="text-[10px] text-slate-400 hover:text-white font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded transition-all"
                       >
                         {t("Limpar log", "Clear log")}
@@ -3072,10 +4298,45 @@ export default function App({ initialTab }: AppProps = {}) {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 gap-3 p-4 bg-slate-950/50 border-b border-slate-800 md:grid-cols-3" data-testid="terminal-live-test-summary">
+                    <div className="flex items-center gap-3 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/20 text-sky-400">
+                        <ClipboardCheck className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Total de Testes', 'Total Tests')}</p>
+                        <p className="text-3xl font-black leading-none text-sky-400" data-testid="terminal-live-total-count">{robotExecutionProgress.total}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+                        <CheckCircle2 className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Total de Sucesso', 'Total Passed')}</p>
+                        <p className="text-3xl font-black leading-none text-emerald-400" data-testid="terminal-live-passed-count">{robotExecutionProgress.passed}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/20 text-rose-400">
+                        <XCircle className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Total de Falhas', 'Total Failed')}</p>
+                        <p className="text-3xl font-black leading-none text-rose-400" data-testid="terminal-live-failed-count">{robotExecutionProgress.failed}</p>
+                      </div>
+                    </div>
+                    <p className="-mt-1 text-right text-[9px] font-mono text-slate-500 md:col-span-3">
+                      {robotExecutionProgress.isFinal
+                        ? t('Resumo final do Robot Framework', 'Robot Framework final summary')
+                        : t('Atualização ao vivo durante a execução', 'Live update during execution')}
+                    </p>
+                  </div>
+
                   {/* Terminal Logs scrolling body */}
-                  <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 leading-relaxed bg-slate-900 select-text">
+                  <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 leading-relaxed bg-slate-900 select-text" data-testid="terminal-logs">
                     {terminalLogs.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12">
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12" data-testid="terminal-empty-state">
                         <TerminalIcon className="w-12 h-12 text-slate-700 mb-2" />
                         <p className="text-xs">{t("Console de Execução Vazio.", "Empty Execution Console.")}</p>
                         <p className="text-[10px] text-slate-600 mt-1">
@@ -3490,6 +4751,15 @@ export default function App({ initialTab }: AppProps = {}) {
                 sqliteDb={sqliteDb}
                 onClearHistory={handleClearExecutionHistory}
                 onRunFeature={() => handleRunFeatureReal()}
+                onLoadLatestRobotReport={async () => {
+                  const imported = await apiClient.importLatestRobotReport();
+                  const refreshedDb = await apiClient.getDatabase();
+                  setSqliteDb(refreshedDb);
+                  appendTerminalLog(
+                    `[TMS] Último relatório Robot importado: ${imported.execution.id} — ${imported.execution.total_tests} testes. output.xml: ${imported.importedFrom.outputXmlPath}`,
+                    'success',
+                  );
+                }}
                 language={language}
                 onChangeLanguage={setLanguage}
               />
@@ -4337,12 +5607,12 @@ export default function App({ initialTab }: AppProps = {}) {
                   </div>
 
                   {/* Render standard folders */}
-                  {(sqliteDb.test_folders || []).map((folder, i) => {
+                  {sortedSphereFolders.map((folder) => {
                     const isSelected = selectedSphereFolder === folder;
-                    const folderLabel = folder.replace('br.com.grupocard.contacard.dev/', '');
+                    const folderLabel = getSphereFolderDisplayLabel(folder);
                     return (
                       <div
-                        key={i}
+                        key={folder}
                         onClick={() => {
                           setSelectedSphereFolder(folder);
                           const filtered = (sqliteDb.test_cases_sphere || []).filter(tc => tc.folder === folder);
@@ -4350,6 +5620,7 @@ export default function App({ initialTab }: AppProps = {}) {
                           setIsCreatingSphereTestCase(false);
                           setIsEditingSphereTestCase(false);
                         }}
+                        data-testid="tms-folder-entry"
                         className={`p-2.5 rounded-lg flex items-center gap-2.5 text-left text-[11.5px] cursor-pointer transition-all border ${
                           isSelected
                             ? 'bg-sky-500/15 border-sky-500 border-l-[5px] border-l-sky-500 text-sky-400 font-extrabold shadow-sm'
@@ -4364,7 +5635,7 @@ export default function App({ initialTab }: AppProps = {}) {
                         )}
                         <span className="truncate font-medium">{folderLabel}</span>
                         {/* Show count badges */}
-                        <span className={`ml-auto font-mono text-[9px] px-1 py-0.2 rounded font-semibold ${
+                        <span data-testid="tms-folder-case-count" className={`ml-auto font-mono text-[9px] px-1 py-0.2 rounded font-semibold ${
                           isSelected ? 'bg-sky-950 text-sky-400' : 'bg-slate-950 text-slate-500'
                         }`}>
                           {(sqliteDb.test_cases_sphere || []).filter(tc => tc.folder === folder).length}
@@ -4431,7 +5702,8 @@ export default function App({ initialTab }: AppProps = {}) {
                         if (!searchSphereQuery.trim()) return true;
                         const query = searchSphereQuery.toLowerCase();
                         return tc.id.toLowerCase().includes(query) || tc.title.toLowerCase().includes(query);
-                      });
+                      })
+                      .sort(compareSphereCasesByTag);
 
                     if (filteredCases.length === 0) {
                       return (
@@ -4443,7 +5715,7 @@ export default function App({ initialTab }: AppProps = {}) {
 
                     return filteredCases.map((tc) => {
                       const isSelected = selectedSphereTestCaseId === tc.id;
-                      const cleanTitle = tc.title.replace(/^[^-]+-\s*(Cenário de Teste Positivo - |Cenário de Teste Alternativo - )?/i, '');
+                      const cleanTitle = getTestCaseDisplayTitle(tc.id, tc.title);
                       
                       return (
                         <div
@@ -4462,11 +5734,8 @@ export default function App({ initialTab }: AppProps = {}) {
                           <div className="flex items-center justify-between gap-1.5">
                             <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
                               isSelected ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-300'
-                            }`}>
-                              {tc.id}
-                            </span>
-                            <span className="font-mono text-[8.5px] text-slate-500 block truncate max-w-[120px]" title={tc.folder}>
-                              {tc.folder.split('/').pop()}
+                            }`} data-testid="tms-case-tag">
+                              {getSphereCaseBadgeValue(tc)}
                             </span>
                           </div>
                           
@@ -4485,9 +5754,10 @@ export default function App({ initialTab }: AppProps = {}) {
                   onClick={() => {
                     const count = (sqliteDb.test_cases_sphere || []).length + 1;
                     const nextId = `RECEL${String(count).padStart(2, '0')}`;
+                    const defaultFolder = resolveDefaultSphereFolder(sqliteDb.test_folders || []);
                     const nCase = {
                       id: nextId,
-                      folder: selectedSphereFolder === 'all' ? 'br.com.grupocard.contacard.dev/Recarga de telefone' : selectedSphereFolder,
+                      folder: selectedSphereFolder === 'all' ? defaultFolder : selectedSphereFolder,
                       title: `${nextId} - Cenário de Teste Positivo - Nova recarga rápida de telefone inteligente`,
                       preconditions: `*** Variables ***\n\${DEFAULT_CPF}=    03533062236`,
                       steps: `Dado que o cliente realiza a recarga básica\nQuando insere DDD e número válido\nEntão a operação é concluída com impressão de comprovante.`,
@@ -4668,7 +5938,7 @@ export default function App({ initialTab }: AppProps = {}) {
                           <div className="flex items-center justify-between gap-1.5 flex-wrap">
                             <div className="flex items-center gap-2">
                               <span className="bg-sky-500/10 text-sky-400 border border-sky-500/30 font-mono text-[10px] font-black px-2.5 py-0.5 rounded-lg uppercase tracking-wider">
-                                {currentCase.id}
+                                {getSphereCaseBadgeValue(currentCase)}
                               </span>
                               <span className="text-[10px] font-mono text-slate-500">
                                 Data: {currentCase.created_at}
@@ -4684,7 +5954,7 @@ export default function App({ initialTab }: AppProps = {}) {
                           </div>
 
                           <h3 className="text-sm font-black text-white mt-1 leading-snug font-sans">
-                            {currentCase.title}
+                            {getTestCaseDisplayTitle(currentCase.id, currentCase.title)}
                           </h3>
 
                           {/* Detail Tabs */}
@@ -4933,11 +6203,10 @@ export default function App({ initialTab }: AppProps = {}) {
                             <button
                               type="button"
                               onClick={() => {
-                                handleLoadTestCaseToWorkspace(currentCase.id);
-                                setIsTestSpecsOpen(false);
+                                handleRunSingleTestCaseReal(currentCase);
                               }}
                               className="bg-sky-500 hover:bg-sky-600 text-slate-950 font-black px-4 py-2 rounded-xl text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-sky-500/15 cursor-pointer ml-1"
-                              title="Carregar e executar este caso de teste automatizado"
+                              title="Executar somente este caso pela tag Robot"
                             >
                               <PlayCircle className="w-4 h-4 text-slate-950 stroke-[2.5px] fill-slate-950" />
                               Executar Teste Automatizado
@@ -5200,6 +6469,39 @@ export default function App({ initialTab }: AppProps = {}) {
                     <p className="text-[11px] leading-normal text-slate-400 font-mono">
                       Todas as guias secundárias de **Histórico Remoto** ou **Relatórios** abertas sincronizam suas execuções instantaneamente.
                     </p>
+                  </div>
+
+                  <div className="bg-slate-950 border border-sky-950/50 p-4 rounded-xl flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-sky-300">
+                      <FolderTree className="w-4 h-4" />
+                      <span className="text-[11px] font-bold uppercase tracking-wide font-mono">
+                        {t('Repositório de Relatórios Robot', 'Robot Report Repository')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-normal text-slate-400 font-mono">
+                      {t(
+                        'O Robot recebe --outputdir com uma subpasta RUN- única neste diretório. O valor é salvo no SQLite.',
+                        'Robot receives --outputdir with a unique RUN subfolder in this directory. The value is saved in SQLite.',
+                      )}
+                    </p>
+                    <input
+                      value={robotResultsDirectory}
+                      onChange={(event) => setRobotResultsDirectory(event.target.value)}
+                      data-testid="settings-robot-results-directory-input"
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded px-2.5 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"
+                      aria-label={t('Diretório de resultados Robot', 'Robot results directory')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveRobotResultsDirectory()}
+                      disabled={isSavingRobotResultsDirectory}
+                      data-testid="settings-save-robot-results-directory"
+                      className="w-full py-2 px-3 bg-sky-950/50 hover:bg-sky-900/50 text-sky-200 hover:text-sky-100 border border-slate-700 hover:border-sky-500 font-mono font-bold text-xs rounded-lg transition-all disabled:opacity-50 disabled:cursor-wait"
+                    >
+                      {isSavingRobotResultsDirectory
+                        ? t('Salvando...', 'Saving...')
+                        : t('Salvar diretório', 'Save directory')}
+                    </button>
                   </div>
 
                   {/* SQLITE DB ADMINISTRATION (RESET DB) */}

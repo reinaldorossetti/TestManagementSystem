@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
+import { resolvePersistedResultsDir, resolveResultsDir } from '@/src/server/robot/resultsPaths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,7 @@ export async function GET(req: Request): Promise<Response> {
   const runId = url.searchParams.get('runId')?.trim();
   const folderParam = url.searchParams.get('folder')?.trim();
   const resultsFolder = folderParam || runId;
+  const resultsPath = url.searchParams.get('resultsPath')?.trim();
   const relPath = url.searchParams.get('path')?.trim().replace(/\\/g, '/');
 
   if (!resultsFolder || !relPath || relPath.includes('..') || path.isAbsolute(relPath)) {
@@ -22,7 +23,9 @@ export async function GET(req: Request): Promise<Response> {
 
   let resultsDir: string;
   try {
-    resultsDir = resolveResultsDir(resultsFolder);
+    resultsDir = resultsPath
+      ? resolvePersistedResultsDir(resultsPath, resultsFolder)
+      : await resolveResultsDir(resultsFolder);
   } catch {
     return new Response('Pasta de resultados inválida.', { status: 400 });
   }

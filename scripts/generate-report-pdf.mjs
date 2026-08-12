@@ -19,7 +19,7 @@ const parseRes = await fetch(`${base}/api/terminal/output`, {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     runId: runFolder,
-    command: 'python -m robot -i login_tests robot-sample/login_tests.robot',
+    command: 'python -m robot -i login_tests test_projects/login_tests.robot',
     timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
   }),
 });

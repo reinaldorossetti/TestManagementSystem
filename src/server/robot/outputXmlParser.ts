@@ -225,14 +225,11 @@ export function parseRobotOutputXml(xml: string, options: ParseOptions): ParsedR
     total_tests: testCases.length,
     passed,
     failed,
+    skipped,
     status: failed > 0 ? 'FAIL' : 'PASS',
     results_path: options.resultsPath,
     results_folder: options.runId,
   };
-
-  // `skipped` é derivável (total - passed - failed) e o schema aceita opcional;
-  // mantido implícito para preservar a forma existente das tabelas.
-  void skipped;
 
   return { execution, testCases, steps };
 }

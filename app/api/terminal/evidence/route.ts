@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
+import { resolvePersistedResultsDir, resolveResultsDir } from '@/src/server/robot/resultsPaths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,13 +19,16 @@ export interface EvidenceManifest {
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const folder = url.searchParams.get('folder')?.trim();
+  const resultsPath = url.searchParams.get('resultsPath')?.trim();
   if (!folder) {
     return Response.json({ error: 'Parâmetro folder ausente.' }, { status: 400 });
   }
 
   let resultsDir: string;
   try {
-    resultsDir = resolveResultsDir(folder);
+    resultsDir = resultsPath
+      ? resolvePersistedResultsDir(resultsPath, folder)
+      : await resolveResultsDir(folder);
   } catch {
     return Response.json({ error: 'Pasta inválida.' }, { status: 400 });
   }

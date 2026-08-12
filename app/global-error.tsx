@@ -51,6 +51,7 @@ export default function GlobalError({
           <button
             type="button"
             onClick={reset}
+            data-testid="app-retry-render-button"
             style={{
               marginTop: 16,
               padding: '8px 16px',
