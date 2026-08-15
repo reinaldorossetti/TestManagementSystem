@@ -47,16 +47,16 @@ export function buildFeatureRobotCommand(
 ): string {
   const py = getPythonExecutable();
   const clean = (tag || '').replace(/^@/, '').trim();
-  void sourceFolder;
+  const target = sourceFolder?.trim() ? './' : 'test_projects/';
   const args = argsFile?.trim()
     ? ` -A ${argsFile.trim()}`
     : '';
   const outDir = (outputDir?.trim() || '').replace(/\\/g, '/');
   const outOption = outDir ? ` --outputdir "${outDir}"` : '';
   if (!clean) {
-    return `${py} -m robot${outOption}${args} ./`;
+    return `${py} -m robot${outOption}${args} ${target}`;
   }
-  return `${py} -m robot${outOption}${args} -i ${clean} ./`;
+  return `${py} -m robot${outOption}${args} -i ${clean} ${target}`;
 }
 
 /** Monta o comando do TMS para executar todos os casos selecionados da feature. */
@@ -86,9 +86,6 @@ export function buildMultipleTestRobotCommand(
 export function buildSingleTestRobotCommand(tag: string, sourceFolder?: string): string {
   const py = getPythonExecutable();
   const clean = (tag || '').replace(/^@/, '').trim();
-  // O backend já executa na pasta `sourceFolder` por `workingDirectory`.
-  // Repetir `test_projects/<sourceFolder>/` aqui faria o Robot procurar uma
-  // subpasta duplicada dentro do próprio projeto.
-  void sourceFolder;
-  return `${py} -m robot --include ${clean} ./`;
+  const target = sourceFolder?.trim() ? './' : 'test_projects/';
+  return `${py} -m robot --include ${clean} ${target}`;
 }

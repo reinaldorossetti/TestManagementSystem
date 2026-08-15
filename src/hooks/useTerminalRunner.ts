@@ -153,12 +153,7 @@ export function useTerminalRunner({
         return {
           resolvedTag: tagOverride,
           workingFolder: folder,
-          command: buildFeatureRobotCommand(
-            tagOverride,
-            tagMeta?.sourceFile,
-            folder,
-            argsFile,
-          ),
+          command: buildSingleTestRobotCommand(tagOverride, folder),
         };
       }
 
@@ -173,7 +168,7 @@ export function useTerminalRunner({
 
       const finalTagMeta = activeProjectTagMeta ?? fallbackTagMeta;
       const effectiveTag =
-        activeProjectTag || filterTag || executionTags[0]?.value || 'login_tests';
+        activeProjectTag || filterTag || executionTags[0]?.value || '';
       const effectiveFolder =
         finalTagMeta?.sourceFolder ?? selectedProjectFolder ?? '';
 
@@ -182,7 +177,6 @@ export function useTerminalRunner({
         workingFolder: effectiveFolder,
         command: buildFeatureRobotCommand(
           effectiveTag,
-          finalTagMeta?.sourceFile,
           effectiveFolder,
           argsFile,
         ),

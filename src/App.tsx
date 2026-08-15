@@ -313,10 +313,8 @@ export default function App({ initialTab }: AppProps = {}) {
 
   const getCompiledCommand = (): string => {
     const activeProjectTag = getSuiteTestTagForProject(selectedProjectFolder);
-    const tagMeta = executionTags.find((opt) => opt.value === (activeProjectTag || filterTag));
     return buildFeatureRobotCommand(
-      activeProjectTag || filterTag || 'login_tests',
-      tagMeta?.sourceFile,
+      activeProjectTag || filterTag || '',
       selectedProjectFolder ?? '',
       argsFile,
     );
