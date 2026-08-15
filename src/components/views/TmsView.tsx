@@ -3,44 +3,97 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { 
   Folder, 
   FolderOpen,
   Plus, 
   Search, 
-  Play, 
   PlayCircle, 
   Edit, 
   Trash2, 
   CheckCircle2, 
   FileText, 
   Database, 
-  Code, 
-  ExternalLink,
-  Layers,
-  Terminal,
-  Clock,
-  ShieldCheck,
   ArrowLeft,
   Upload,
   FileSpreadsheet,
   Compass,
   X,
-  Globe
+  Globe,
+  BookOpen,
+  Briefcase,
+  ClipboardCheck,
+  ExternalLink
 } from 'lucide-react';
-import type { DbTestCaseSphere, VirtualDatabase } from '../../utils/sqliteEngine';
+import type { DbTestCaseSphere, VirtualDatabase, ProjectPlatform } from '../../utils/sqliteEngine';
 import { SphereCaseStatusBadge } from '../SphereCaseStatusBadge';
 import { ManualExecutionDialog } from '../ManualExecutionDialog';
-import { AcceptanceDocEditor } from '../AcceptanceDocEditor';
 import { TestCaseEvidenceTab } from '../TestCaseEvidenceTab';
 import {
   getTestCaseDisplayId,
   getTestCaseDisplayTitle,
   getTestCaseDisplayFeature,
-  getManualExecutionDisplayTitle
+  parseRobotGherkinFeature,
+  buildImportedTestCaseId,
+  buildImportedTestCaseTitle
 } from '../../utils/featureLoader';
 
+const buildWorkspaceImportedCaseId = (
+  folderName: string,
+  tags: string[],
+  scenarioTitle: string,
+  fallbackId: string,
+): string => {
+  const baseId = buildImportedTestCaseId(tags, scenarioTitle, fallbackId);
+  const folderLabel = folderName.split('/').pop() || folderName;
+  const folderSlug = folderLabel
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 8);
+
+  if (!folderSlug || baseId.startsWith(folderSlug)) {
+    return baseId;
+  }
+  return `${folderSlug}-${baseId}`;
+};
+
+const normalizeImportedCaseTitleForMatch = (title: string): string => {
+  return title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .trim()
+    .toLowerCase();
+};
+
+const resolveRobotFolderLabel = (content: string, fallbackTitle: string): string => {
+  const forceTagMatch = content.match(/Force Tags\s+([A-Za-z0-9_-]+)/i);
+  if (forceTagMatch?.[1]) {
+    const rawTag = forceTagMatch[1].replace(/^@/, '').trim();
+    return rawTag
+      .split(/[-_]/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  const testTagMatch = content.match(/Test Tags\s+([A-Za-z0-9_-]+)/i);
+  if (testTagMatch?.[1]) {
+    const rawTag = testTagMatch[1].replace(/^@/, '').trim();
+    return rawTag
+      .split(/[-_]/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return fallbackTitle || 'Workspace Importados';
+};
+
+const isTwoScenarioFallback = (parsed: { scenarios: Array<any> }): boolean => {
+  return parsed.scenarios.length === 0;
+};
+import { handleExportToExcel } from '../../utils/excelExporter';
+import { handleExportTestCasesToPDF } from '../../utils/pdfExporter';
+import { buildStatusByCaseId } from '../../utils/sphereCaseExecution';
+import { apiClient } from '../../lib/api/client';
 const extractPrimaryScenarioTagFromPreconditions = (preconditions?: string): string | null => {
   if (!preconditions) return null;
   const tagMatch = preconditions.match(/@([A-Za-z0-9_-]+)/);
@@ -90,9 +143,66 @@ const compareSphereCasesByTag = (
 
 const getSphereFolderDisplayLabel = (folder: string): string =>
   folder ? folder.replace('br.com.grupocard.contacard.dev/', '') : '';
-import { handleExportToExcel } from '../../utils/excelExporter';
-import { handleExportTestCasesToPDF } from '../../utils/pdfExporter';
-import { buildStatusByCaseId } from '../../utils/sphereCaseExecution';
+
+const getDefaultSqlQuery = (caseId: string) => {
+  return `-- Exemplos de Query para o Caso de Teste ${caseId}
+
+-- 1. INSERT: Registra uma nova simulação de execução do teste no SQLite
+INSERT INTO executions (
+  command, 
+  duration_ms, 
+  pass_count, 
+  fail_count, 
+  skip_count, 
+  report_path
+) VALUES (
+  'robot --include ${caseId} ./', 
+  1520, 
+  1, 
+  0, 
+  0, 
+  '%ROBOT_HOME%/results/output.xml'
+);
+
+-- 2. UPDATE: Atualiza o status de aprovação de execução
+UPDATE test_cases 
+SET status = 'PASS', 
+    duration_ms = 1520 
+WHERE test_case_id = '${caseId}';
+
+-- 3. SELECT: Consulta histórico consolidado de execuções deste cenário
+SELECT id, status, duration_ms, created_at 
+FROM test_cases 
+WHERE test_case_id = '${caseId}' 
+ORDER BY id DESC;`;
+};
+
+const getDefaultScriptLanguage = (caseId: string, title: string) => {
+  return `# Script de Automação correspondente ao cenário ${caseId}
+# Baseado na estrutura Gherkin / Robot Framework
+
+*** Settings ***
+Documentation    Automação para o teste: ${title || 'Caso de teste'}
+Library          SeleniumLibrary
+Library          DatabaseLibrary
+
+*** Variables ***
+\${BROWSER}       Chrome
+\${URL}           https://contacard.grupocard.com.br
+
+*** Test Cases ***
+Executar Cenário ${caseId}
+    [Tags]           ${caseId}    regression
+    Dado Que O Usuário Está Logado No Sistema
+    E Acessa A Rota Mapeada No Gherkin
+    Quando Preenche Os Parâmetros Do Cenário
+    Então Valida O Resultado Esperado Em Tela`;
+};
+
+const getFormattedTimestamp = () => {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 interface TmsViewProps {
   sqliteDb: VirtualDatabase;
@@ -181,12 +291,30 @@ export const TmsView: React.FC<TmsViewProps> = ({
   handleRunFeatureReal,
   t,
 }) => {
-  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'evidence'>('overview');
+  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'evidence' | 'insights' | 'scripts'>('overview');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isEditingFolder, setIsEditingFolder] = useState(false);
   const [newFolderNameValue, setNewFolderNameValue] = useState('');
   const [editFolderNameValue, setEditFolderNameValue] = useState('');
   const [applyObservationToFolder, setApplyObservationToFolder] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Project state
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(
+    sqliteDb.projects?.[0]?.id || ''
+  );
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isEditingProject, setIsEditingProject] = useState(false);
+  const [newProjectNameValue, setNewProjectNameValue] = useState('');
+  const [newProjectDetailsValue, setNewProjectDetailsValue] = useState('');
+  const [newProjectPlatformValue, setNewProjectPlatformValue] = useState<ProjectPlatform>('Web');
+  const [editProjectNameValue, setEditProjectNameValue] = useState('');
+  const [editProjectDetailsValue, setEditProjectDetailsValue] = useState('');
+  const [editProjectPlatformValue, setEditProjectPlatformValue] = useState<ProjectPlatform>('Web');
+
+  // File input refs
+  const acceptanceDocInputRef = useRef<HTMLInputElement>(null);
+  const tmsImportFileInputRef = useRef<HTMLInputElement>(null);
 
   // Compute sorted folder list
   const sortedSphereFolders = useMemo(() => {
@@ -220,7 +348,66 @@ export const TmsView: React.FC<TmsViewProps> = ({
     return sqliteDb.test_cases_sphere?.find((c) => c.id === selectedSphereTestCaseId) || filteredCases[0] || null;
   }, [sqliteDb.test_cases_sphere, selectedSphereTestCaseId, filteredCases]);
 
-  // Handlers for folder creation / deletion
+  // Helper to resolve acceptance doc for current folder
+  const resolveFolderAcceptanceDoc = (folderPath: string) => {
+    return (sqliteDb.folder_acceptance_docs || []).find(
+      (entry) => entry.folder_path === folderPath
+    );
+  };
+
+  // Project management handlers
+  const handleCreateProject = async (name: string, details: string, platform: ProjectPlatform) => {
+    if (!name.trim()) return;
+    const newProj = {
+      id: `PRJ-${Date.now()}`,
+      name: name.trim(),
+      details: details.trim(),
+      platform,
+      created_at: new Date().toISOString(),
+    };
+    const updatedDb = {
+      ...sqliteDb,
+      projects: [...(sqliteDb.projects || []), newProj],
+    };
+    try {
+      const persistedDb = await apiClient.replaceDatabase(updatedDb);
+      setSqliteDb(persistedDb);
+      setSelectedProjectId(newProj.id);
+      setIsCreatingProject(false);
+      setNewProjectNameValue('');
+      setNewProjectDetailsValue('');
+      setToastMessage(t(`Projeto "${newProj.name}" criado com sucesso!`, `Project "${newProj.name}" created successfully!`));
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err) {
+      alert(t('Erro ao criar projeto.', 'Error creating project.'));
+    }
+  };
+
+  const handleUpdateProjectName = async (
+    id: string,
+    name: string,
+    details: string,
+    platform: ProjectPlatform
+  ) => {
+    if (!id || !name.trim()) return;
+    const updatedDb = {
+      ...sqliteDb,
+      projects: (sqliteDb.projects || []).map((p) =>
+        p.id === id ? { ...p, name: name.trim(), details: details.trim(), platform } : p
+      ),
+    };
+    try {
+      const persistedDb = await apiClient.replaceDatabase(updatedDb);
+      setSqliteDb(persistedDb);
+      setIsEditingProject(false);
+      setToastMessage(t('Projeto atualizado com sucesso!', 'Project updated successfully!'));
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err) {
+      alert(t('Erro ao atualizar projeto.', 'Error updating project.'));
+    }
+  };
+
+  // Folder management handlers
   const handleCreateFolder = (name: string) => {
     if (!name.trim()) return;
     const trimmed = name.trim();
@@ -268,8 +455,154 @@ export const TmsView: React.FC<TmsViewProps> = ({
     }
   };
 
+  // Test import handler
+  const handleImportTestsFromTmsClick = () => {
+    if (!selectedProjectId) {
+      alert(t('Selecione ou crie um projeto no TMS antes de importar testes.', 'Select or create a project in TMS before importing tests.'));
+      return;
+    }
+    tmsImportFileInputRef.current?.click();
+  };
+
+  const handleTmsImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      const parsed = parseRobotGherkinFeature(text);
+      if (parsed.scenarios.length === 0 || isTwoScenarioFallback(parsed)) {
+        alert(t('Nenhum cenário Robot válido foi encontrado para importar no TMS.', 'No valid Robot scenario was found to import into TMS.'));
+        return;
+      }
+
+      const folderLabel = resolveRobotFolderLabel(
+        text,
+        parsed.title !== 'Jornada TMS - Robot Suite' ? parsed.title : 'Workspace Importados',
+      );
+      const folderName = getSphereFolderDisplayLabel(folderLabel).trim();
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      const existingFolders = sqliteDb.test_folders || [];
+      const updatedFolders = existingFolders.includes(folderName)
+        ? existingFolders
+        : [...existingFolders, folderName];
+
+      const currentCases = sqliteDb.test_cases_sphere || [];
+      const updatedCases = [...currentCases];
+      const importedCaseIds: string[] = [];
+
+      parsed.scenarios.forEach((sc, index) => {
+        const fallbackId = `TC-${String(currentCases.length + index + 1).padStart(3, '0')}`;
+        const stableCaseId = buildWorkspaceImportedCaseId(folderName, sc.tags, sc.title, fallbackId);
+        const caseId = stableCaseId;
+
+        const formattedSteps = sc.steps.map((st) => `${st.rawType || 'And'} ${st.text}`).join('\n');
+        const importedCase: DbTestCaseSphere = {
+          id: caseId,
+          folder: folderName,
+          title: buildImportedTestCaseTitle(caseId, sc.title),
+          preconditions: `*** Variables ***\n\${DEFAULT_TAG}=    ${sc.tags.map((t) => '@' + t.replace(/^@/, '')).join('  ')}`,
+          steps: formattedSteps,
+          expected_result: sc.steps.filter((st) => st.type === 'THEN').map((st) => st.text).join('\n') || 'Validar execução com sucesso.',
+          history: [{ user: 'Reinaldo', action: 'created test case from TMS Importar Testes', time: getFormattedTimestamp() }],
+          created_at: now,
+        };
+
+        const existingIndex = updatedCases.findIndex((c) => c.folder === folderName && c.id === caseId);
+        if (existingIndex >= 0) {
+          updatedCases[existingIndex] = importedCase;
+        } else {
+          updatedCases.push(importedCase);
+        }
+        importedCaseIds.push(caseId);
+      });
+
+      const updatedDb: VirtualDatabase = {
+        ...sqliteDb,
+        test_folders: updatedFolders,
+        test_cases_sphere: updatedCases,
+        folder_projects: [
+          ...(sqliteDb.folder_projects || []).filter((link) => link.folder_path !== folderName),
+          { folder_path: folderName, project_id: selectedProjectId },
+        ],
+      };
+
+      try {
+        const persistedDb = await apiClient.replaceDatabase(updatedDb);
+        setSqliteDb(persistedDb);
+        setSelectedSphereFolder(folderName);
+        setSelectedSphereTestCaseId(importedCaseIds[0] ?? null);
+        setToastMessage(t(`${parsed.scenarios.length} testes importados e salvos no TMS.`, `${parsed.scenarios.length} tests imported and saved to TMS.`));
+        setTimeout(() => setToastMessage(null), 3000);
+      } catch (err) {
+        alert(t('Falha ao armazenar os testes no TMS.', 'Failed to store tests in TMS.'));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Acceptance doc import handler
+  const handleImportAcceptanceDocClick = () => {
+    if (!selectedSphereFolder || selectedSphereFolder === 'all') {
+      alert(t('Selecione uma pasta de teste específica para importar critérios de aceite.', 'Select a specific test folder to import acceptance criteria.'));
+      return;
+    }
+    acceptanceDocInputRef.current?.click();
+  };
+
+  const handleAcceptanceDocFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selectedSphereFolder || selectedSphereFolder === 'all') return;
+
+    try {
+      const doc = await apiClient.uploadAcceptanceDoc(selectedSphereFolder, file);
+      const others = (sqliteDb.folder_acceptance_docs || []).filter(
+        (entry) => entry.folder_path !== doc.folder_path,
+      );
+      setSqliteDb({
+        ...sqliteDb,
+        folder_acceptance_docs: [...others, doc],
+      });
+      setToastMessage(t(`Critérios de aceite importados para "${selectedSphereFolder}".`, `Acceptance criteria imported for "${selectedSphereFolder}".`));
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error) {
+      alert(t('Falha ao importar critérios de aceite.', 'Failed to import acceptance criteria.'));
+    }
+  };
+
   return (
     <div className="w-full h-full bg-slate-50 text-slate-800 flex flex-col font-sans select-none antialiased overflow-hidden" data-testid="tms-view-container">
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl shadow-lg border border-emerald-500 flex items-center gap-2 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-white" />
+          <span className="text-xs font-mono">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Hidden File Inputs */}
+      <input
+        ref={acceptanceDocInputRef}
+        type="file"
+        accept=".md,text/markdown"
+        className="hidden"
+        onChange={handleAcceptanceDocFileChange}
+      />
+      <input
+        ref={tmsImportFileInputRef}
+        type="file"
+        accept=".feature,.txt,.robot"
+        className="hidden"
+        onChange={handleTmsImportFileChange}
+        data-testid="tms-import-tests-file-input"
+      />
+
       {/* Light Standalone Header */}
       <header className="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
@@ -307,6 +640,153 @@ export const TmsView: React.FC<TmsViewProps> = ({
         
         {/* Left Pane (Folders / Features Tree - ~24% width) */}
         <div className="w-[24%] flex flex-col bg-slate-50 p-3 min-w-[240px] h-full overflow-hidden shrink-0">
+          
+          {/* Active Project Selector */}
+          <div className="flex flex-col gap-2 mb-3 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+            <span className="text-[10px] text-slate-500 uppercase font-mono font-extrabold tracking-wider flex items-center gap-1.5 px-0.5">
+              <Briefcase className="w-3 h-3 text-indigo-500" />
+              {t("Projeto Ativo", "Active Project")}
+            </span>
+            <div className="flex items-stretch gap-1.5">
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
+              >
+                {(sqliteDb.projects || []).length === 0 && (
+                  <option value="">{t("Nenhum projeto cadastrado", "No project registered")}</option>
+                )}
+                {(sqliteDb.projects || []).map((project) => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreatingProject(true);
+                  setIsEditingProject(false);
+                }}
+                className="h-8 w-8 shrink-0 flex items-center justify-center text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg border border-sky-100 transition-all cursor-pointer"
+                title={t("Criar Novo Projeto", "Create New Project")}
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedProjectId) {
+                    alert(t("Selecione um projeto para renomear.", "Select a project to rename."));
+                    return;
+                  }
+                  const current = (sqliteDb.projects || []).find((p) => p.id === selectedProjectId);
+                  setEditProjectNameValue(current?.name ?? '');
+                  setEditProjectDetailsValue(current?.details ?? '');
+                  setEditProjectPlatformValue(current?.platform ?? 'Web');
+                  setIsEditingProject(true);
+                  setIsCreatingProject(false);
+                }}
+                disabled={!selectedProjectId}
+                className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-lg border transition-all ${
+                  selectedProjectId
+                    ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400 cursor-pointer'
+                    : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
+                }`}
+                title={t("Renomear Projeto Selecionado", "Rename Selected Project")}
+              >
+                <Edit className="w-3.5 h-3.5 stroke-[2]" />
+              </button>
+            </div>
+
+            {isCreatingProject && (
+              <div className="flex flex-col gap-2 pt-1">
+                <input
+                  type="text"
+                  placeholder={t("Nome do novo projeto", "New project name")}
+                  value={newProjectNameValue}
+                  onChange={(e) => setNewProjectNameValue(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
+                />
+                <textarea
+                  placeholder={t("Detalhes do Projeto", "Project Details")}
+                  value={newProjectDetailsValue}
+                  onChange={(e) => setNewProjectDetailsValue(e.target.value)}
+                  rows={2}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 resize-none focus:bg-white focus:border-sky-500 focus:outline-none"
+                />
+                <select
+                  value={newProjectPlatformValue}
+                  onChange={(e) => setNewProjectPlatformValue(e.target.value as ProjectPlatform)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="Web">{t("Web", "Web")}</option>
+                  <option value="Mobile">{t("Mobile", "Mobile")}</option>
+                  <option value="Desktop">{t("Desktop", "Desktop")}</option>
+                </select>
+                <div className="flex gap-1 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingProject(false)}
+                    className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+                  >
+                    {t("Cancelar", "Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateProject(newProjectNameValue, newProjectDetailsValue, newProjectPlatformValue)}
+                    className="text-[10px] font-mono px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                  >
+                    {t("Criar", "Create")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isEditingProject && (
+              <div className="flex flex-col gap-2 pt-1">
+                <input
+                  type="text"
+                  placeholder={t("Novo nome do projeto", "New project name")}
+                  value={editProjectNameValue}
+                  onChange={(e) => setEditProjectNameValue(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
+                />
+                <textarea
+                  placeholder={t("Detalhes do Projeto", "Project Details")}
+                  value={editProjectDetailsValue}
+                  onChange={(e) => setEditProjectDetailsValue(e.target.value)}
+                  rows={2}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 resize-none focus:bg-white focus:border-sky-500 focus:outline-none"
+                />
+                <select
+                  value={editProjectPlatformValue}
+                  onChange={(e) => setEditProjectPlatformValue(e.target.value as ProjectPlatform)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="Web">{t("Web", "Web")}</option>
+                  <option value="Mobile">{t("Mobile", "Mobile")}</option>
+                  <option value="Desktop">{t("Desktop", "Desktop")}</option>
+                </select>
+                <div className="flex gap-1 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProject(false)}
+                    className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+                  >
+                    {t("Cancelar", "Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateProjectName(selectedProjectId, editProjectNameValue, editProjectDetailsValue, editProjectPlatformValue)}
+                    className="text-[10px] font-mono px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                  >
+                    {t("Salvar", "Save")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Folder Action Center */}
           <div className="flex flex-col gap-2.5 mb-3 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
             <div className="flex items-center justify-between px-0.5">
               <span className="text-[10px] text-slate-500 uppercase font-mono font-extrabold tracking-wider flex items-center gap-1.5">
@@ -398,7 +878,42 @@ export const TmsView: React.FC<TmsViewProps> = ({
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span className="text-[10px] font-mono font-black">{t("Excel", "Excel")}</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const casesToExport = sqliteDb.test_cases_sphere || [];
+                  const foldersList = sqliteDb.test_folders || [];
+                  if (casesToExport.length === 0) {
+                    alert(t("Não existem casos de teste cadastrados para exportar.", "There are no registered test cases to export."));
+                    return;
+                  }
+                  handleExportTestCasesToPDF(
+                    casesToExport,
+                    foldersList,
+                    buildStatusByCaseId(casesToExport, sphereTestCaseStatuses),
+                    'ENG',
+                  );
+                }}
+                className="h-8 px-2 bg-rose-50/70 hover:bg-rose-100/80 text-rose-600 hover:text-rose-700 border border-slate-200 hover:border-rose-400 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0"
+                title={t("Exportar Plano de Testes para PDF", "Export Test Plan to PDF")}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span className="text-[10px] font-mono font-black">{t("PDF", "PDF")}</span>
+              </button>
             </div>
+
+            <button
+              type="button"
+              onClick={handleImportTestsFromTmsClick}
+              disabled={!selectedProjectId}
+              data-testid="tms-import-tests-button"
+              className="h-9 w-full px-2.5 text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 disabled:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed rounded-lg transition-all border border-sky-200 hover:border-sky-500 disabled:border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer font-bold mt-1"
+              title={t("Importar um arquivo de testes e salvar todos os cenários no TMS", "Import a test file and save all scenarios in TMS")}
+            >
+              <Upload className="w-4 h-4" />
+              <span className="text-[10px] font-mono font-black">{t("Importar Testes", "Import Tests")}</span>
+            </button>
           </div>
 
           {isCreatingFolder && (
@@ -484,6 +999,12 @@ export const TmsView: React.FC<TmsViewProps> = ({
               const isSelected = selectedSphereFolder === folder;
               const folderLabel = getSphereFolderDisplayLabel(folder);
               const count = (sqliteDb.test_cases_sphere || []).filter((tc) => tc.folder === folder).length;
+              const folderProjectId = (sqliteDb.folder_projects || []).find(
+                (link) => link.folder_path === folder,
+              )?.project_id;
+              const folderProjectName = folderProjectId
+                ? (sqliteDb.projects || []).find((p) => p.id === folderProjectId)?.name
+                : undefined;
 
               return (
                 <div
@@ -508,7 +1029,18 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   ) : (
                     <Folder className="w-4 h-4 shrink-0 text-slate-400" />
                   )}
-                  <span className="flex-1 truncate font-semibold">{folderLabel}</span>
+                  <span className="flex flex-col min-w-0 flex-1">
+                    <span className="truncate font-semibold">{folderLabel}</span>
+                    {folderProjectName && (
+                      <span
+                        className="truncate text-[9px] font-mono font-bold text-indigo-700 flex items-center gap-1"
+                        title={t(`Projeto: ${folderProjectName}`, `Project: ${folderProjectName}`)}
+                      >
+                        <Briefcase className="w-2.5 h-2.5 shrink-0" />
+                        {folderProjectName}
+                      </span>
+                    )}
+                  </span>
                   <span data-testid="tms-folder-case-count" className={`ml-auto font-mono text-[9.5px] px-1.5 py-0.2 rounded-full font-bold shrink-0 ${
                     isSelected ? 'bg-sky-200/60 text-sky-850' : 'bg-slate-200/80 text-slate-600'
                   }`}>
@@ -523,7 +1055,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
         {/* Middle Pane (Test Cases List in Selected Folder - ~28% width) */}
         <div className="w-[28%] flex flex-col p-3 min-w-[280px] bg-white h-full overflow-hidden shrink-0">
           {/* Search bar */}
-          <div className="relative mb-3.5">
+          <div className="relative mb-3">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
               <Search className="w-4 h-4" />
             </span>
@@ -545,6 +1077,18 @@ export const TmsView: React.FC<TmsViewProps> = ({
               </button>
             )}
           </div>
+
+          {/* Import Acceptance Criteria Button */}
+          <button
+            type="button"
+            onClick={handleImportAcceptanceDocClick}
+            disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+            className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-slate-200 hover:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white py-2 text-[11px] font-mono font-bold text-sky-700 transition-colors shadow-sm"
+            title={t('Importar um arquivo .md compartilhado por todos os casos desta pasta', 'Import a .md file shared by all cases in this folder')}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {t('Importar Critérios de Aceite', 'Import Acceptance Criteria')}
+          </button>
 
           <div className="flex items-center justify-between mb-2.5 px-1">
             <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">{t("TEST CASES", "TEST CASES")}</span>
@@ -645,6 +1189,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   <h4 className="font-extrabold text-sm text-sky-600 uppercase font-mono">
                     {isCreatingSphereTestCase ? t("Cadastrar Caso de Teste", "Register Test Case") : `${t("Editar", "Edit")} - ${formSphereId}`}
                   </h4>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t("Sincroniza automaticamente com o Workspace Gherkin", "Automatically synchronizes with Gherkin Workspace")}</p>
                 </div>
               </div>
 
@@ -728,6 +1273,18 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   data-testid="tms-observation-input"
                   className="bg-orange-50/30 border border-orange-200 rounded-lg px-3 py-2 text-xs text-slate-850 focus:bg-white focus:border-orange-400 focus:outline-none placeholder:text-slate-400 resize-y"
                 />
+                {isEditingSphereTestCase && (
+                  <label className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono font-bold text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyObservationToFolder}
+                      onChange={(e) => setApplyObservationToFolder(e.target.checked)}
+                      data-testid="tms-apply-observation-to-folder"
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
+                    />
+                    {t("Aplicar para todos os testes.", "Apply to all tests.")}
+                  </label>
+                )}
               </div>
 
               {/* Actions Form */}
@@ -737,6 +1294,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   onClick={() => {
                     setIsCreatingSphereTestCase(false);
                     setIsEditingSphereTestCase(false);
+                    setApplyObservationToFolder(false);
                   }}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border border-slate-200"
                 >
@@ -754,13 +1312,22 @@ export const TmsView: React.FC<TmsViewProps> = ({
                         steps: formSphereSteps,
                         expected_result: formSphereExpectedResult,
                         observation: formSphereObservation,
+                        history: [{ user: 'Reinaldo', action: isEditingSphereTestCase ? 'updated test case' : 'created test case', time: getFormattedTimestamp() }],
                         created_at: new Date().toISOString()
                       };
 
                       setSqliteDb((prev) => {
                         const existing = prev.test_cases_sphere || [];
                         const updated = isEditingSphereTestCase
-                          ? existing.map((c) => (c.id === newCase.id ? { ...c, ...newCase } : c))
+                          ? existing.map((c) => {
+                              if (c.id === newCase.id) {
+                                return { ...c, ...newCase, history: [...(c.history || []), { user: 'Reinaldo', action: 'updated test case', time: getFormattedTimestamp() }] };
+                              }
+                              if (applyObservationToFolder && c.folder === formSphereFolder) {
+                                return { ...c, observation: formSphereObservation };
+                              }
+                              return c;
+                            })
                           : [...existing, newCase];
 
                         return {
@@ -771,6 +1338,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
                       setIsCreatingSphereTestCase(false);
                       setIsEditingSphereTestCase(false);
+                      setApplyObservationToFolder(false);
                       setSelectedSphereTestCaseId(newCase.id);
                     }
                   }}
@@ -808,23 +1376,23 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   {getTestCaseDisplayTitle(currentCase.id, currentCase.title)}
                 </h3>
 
-                {/* Detail Tabs */}
-                <div className="flex items-center gap-2 border-b border-slate-200 mt-4 bg-white">
+                {/* Detail Sub-Tabs */}
+                <div className="flex items-center gap-1.5 border-b border-slate-200 mt-3.5 bg-white">
                   <button
                     type="button"
                     onClick={() => setActiveDetailTab('overview')}
-                    className={`px-4 py-2 text-xs font-mono font-bold transition-all border-b-2 ${
+                    className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
                       activeDetailTab === 'overview'
                         ? 'border-sky-600 text-sky-600'
                         : 'border-transparent text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    {t("Detalhes do Caso", "Case Details")}
+                    {t("Visão Geral", "Overview")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveDetailTab('evidence')}
-                    className={`px-4 py-2 text-xs font-mono font-bold transition-all border-b-2 ${
+                    className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
                       activeDetailTab === 'evidence'
                         ? 'border-sky-600 text-sky-600'
                         : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -832,11 +1400,61 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   >
                     {t("Evidências", "Evidence")}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDetailTab('insights')}
+                    className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
+                      activeDetailTab === 'insights'
+                        ? 'border-sky-600 text-sky-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {t("Log de Auditoria", "Audit Log")} ({(currentCase.history || []).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDetailTab('scripts')}
+                    className={`px-3.5 py-1.5 text-[10.5px] font-mono font-bold transition-all border-b-2 ${
+                      activeDetailTab === 'scripts'
+                        ? 'border-sky-600 text-sky-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {t("Scripts", "Scripts")}
+                  </button>
                 </div>
               </div>
 
-              {activeDetailTab === 'overview' ? (
+              {activeDetailTab === 'overview' && (
                 <div className="flex flex-col gap-5">
+                  {/* Acceptance Criteria (.md Doc) Block */}
+                  {(() => {
+                    const acceptanceDoc = resolveFolderAcceptanceDoc(currentCase.folder);
+                    return (
+                      <div className="flex flex-col gap-1 bg-sky-50/60 p-3.5 rounded-xl border border-sky-200 text-left">
+                        <span className="text-[10px] text-sky-700 uppercase font-mono font-bold tracking-wider">
+                          {t('Critério de Aceite', 'Acceptance Criteria')}
+                        </span>
+                        {acceptanceDoc ? (
+                          <a
+                            href={acceptanceDoc.doc_web_path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-sky-700 hover:text-sky-900 border border-slate-200 hover:border-sky-500 rounded-lg px-3 py-2 w-fit bg-white transition-colors"
+                          >
+                            <BookOpen className="w-3.5 h-3.5 text-sky-600" />
+                            {acceptanceDoc.doc_title}
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                          </a>
+                        ) : (
+                          <p className="text-[11px] font-sans text-slate-500">
+                            {t('Nenhum critério importado para esta pasta.', 'No acceptance criteria imported for this folder.')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* TEST SCENARIO / GHERKIN BDD STEPS Block */}
                   <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
                     <span className="text-[10px] font-mono font-extrabold uppercase text-slate-500 tracking-wider">
@@ -860,9 +1478,14 @@ export const TmsView: React.FC<TmsViewProps> = ({
                         if (match) {
                           const keyword = match[0];
                           const rest = trimmed.slice(keyword.length);
+                          let kwColor = 'text-[#FF6600] font-black';
+                          if (['Dado Que', 'Dado que', 'Dado', 'Given'].includes(keyword)) kwColor = 'text-sky-600 font-bold';
+                          else if (['Quando', 'When'].includes(keyword)) kwColor = 'text-amber-600 font-bold';
+                          else if (['Então', 'Then'].includes(keyword)) kwColor = 'text-emerald-600 font-bold';
+
                           return (
                             <div key={idx} className="my-1">
-                              <span className="text-[#FF6600] font-black uppercase pr-1.5">{keyword}</span>
+                              <span className={`${kwColor} uppercase pr-1.5`}>{keyword}</span>
                               <span className="text-slate-800">{rest}</span>
                             </div>
                           );
@@ -874,8 +1497,8 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   </div>
 
                   {/* EXPECTED OUTCOME Block */}
-                  <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
-                    <span className="text-[10px] font-mono font-extrabold uppercase text-slate-500 tracking-wider">
+                  <div className="bg-[#F0FDF4]/65 border border-emerald-200 rounded-xl p-4 flex flex-col gap-2">
+                    <span className="text-[10px] font-mono font-extrabold uppercase text-emerald-800 tracking-wider">
                       {t("EXPECTED OUTCOME", "EXPECTED OUTCOME")}
                     </span>
                     <div className="bg-white border border-slate-200 rounded-lg p-3 text-xs text-slate-800 font-sans leading-relaxed">
@@ -885,11 +1508,11 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
                   {/* OBSERVATION Block */}
                   {currentCase.observation && (
-                    <div className="bg-orange-50/40 border border-orange-200 rounded-xl p-4 flex flex-col gap-2">
-                      <span className="text-[10px] font-mono font-extrabold uppercase text-orange-600 tracking-wider">
+                    <div className="bg-orange-50/60 border border-orange-200 rounded-xl p-4 flex flex-col gap-2">
+                      <span className="text-[10px] font-mono font-extrabold uppercase text-orange-850 tracking-wider">
                         {t("OBSERVATION", "OBSERVATION")}
                       </span>
-                      <div className="text-xs text-slate-800 font-sans leading-relaxed pl-1 border-l-2 border-orange-400 pl-2">
+                      <div className="text-xs text-slate-800 font-sans leading-relaxed pl-2 border-l-2 border-orange-400">
                         {currentCase.observation}
                       </div>
                     </div>
@@ -897,16 +1520,16 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
                   {/* Bottom Actions Bar */}
                   <div className="flex items-center justify-between border-t border-slate-200 pt-4 mt-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSphereTestCase(currentCase.id)}
-                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        {t("Delete", "Delete")}
-                      </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSphereTestCase(currentCase.id)}
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {t("Excluir", "Delete")}
+                    </button>
 
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -921,27 +1544,27 @@ export const TmsView: React.FC<TmsViewProps> = ({
                           setIsCreatingSphereTestCase(false);
                         }}
                         data-testid="tms-edit-case-button"
-                        className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Edit className="w-3.5 h-3.5" />
-                        {t("Edit", "Edit")}
+                        <Edit className="w-3.5 h-3.5 text-sky-600" />
+                        {t("Editar", "Edit")}
                       </button>
-                    </div>
 
-                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setManualExecutionDialogOpen(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-600/10 cursor-pointer"
+                        className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-violet-600/10 cursor-pointer"
+                        title={t("Registrar execução manual deste caso de teste", "Record manual execution for this test case")}
                       >
-                        <ShieldCheck className="w-4 h-4" />
+                        <ClipboardCheck className="w-4 h-4 text-white" />
                         {t("Executar Manualmente", "Run Manually")}
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleRunSingleTestCaseReal(currentCase)}
-                        className="bg-[#FF6600] hover:bg-[#E05500] text-white px-4 py-2.5 rounded-xl text-xs font-mono font-extrabold transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/10 cursor-pointer"
+                        className="bg-[#FF6600] hover:bg-[#E05500] text-white px-4.5 py-2.5 rounded-xl text-xs font-mono font-extrabold transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/10 cursor-pointer ml-1"
+                        title={t("Executar somente este caso pela tag Robot", "Run only this test case by its Robot tag")}
                       >
                         <PlayCircle className="w-4 h-4 stroke-[2.5px]" />
                         {t("Executar Teste Automatizado", "Run Automated Test")}
@@ -949,11 +1572,69 @@ export const TmsView: React.FC<TmsViewProps> = ({
                     </div>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {activeDetailTab === 'evidence' && (
                 <TestCaseEvidenceTab
                   testCaseId={currentCase.id}
                   t={t}
                 />
+              )}
+
+              {activeDetailTab === 'insights' && (
+                <div className="flex flex-col gap-2.5 text-left font-mono">
+                  <span className="text-[10px] text-sky-700 uppercase font-mono font-bold tracking-wider">{t("Histórico de Alterações (Log de Auditoria)", "Change History (Audit Log)")}</span>
+                  
+                  <div className="relative border-l border-slate-200 pl-4 ml-1 flex flex-col gap-4 py-2">
+                    {(currentCase.history || []).map((h, i) => (
+                      <div key={i} className="relative text-[11px] flex flex-col">
+                        <span className="absolute -left-[21.5px] top-1 w-2.5 h-2.5 rounded-full bg-slate-100 border-2 border-slate-350" />
+                        <div className="flex items-center gap-1 text-slate-450 text-[10px]">
+                          <span className="text-slate-650 font-bold">{h.user}</span>
+                          <span>•</span>
+                          <span className="text-slate-400">{h.time}</span>
+                        </div>
+                        <p className="text-slate-600 mt-0.5">{h.action}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeDetailTab === 'scripts' && (
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5 text-left">
+                    <span className="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">SQL QUERY:</span>
+                    <textarea
+                      rows={10}
+                      value={sphereCustomSqlQuery[currentCase.id] !== undefined ? sphereCustomSqlQuery[currentCase.id] : getDefaultSqlQuery(currentCase.id)}
+                      onChange={(e) => {
+                        setSphereCustomSqlQuery(prev => ({
+                          ...prev,
+                          [currentCase.id]: e.target.value
+                        }));
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 font-mono text-[11px] text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none selection:bg-sky-100 placeholder:text-slate-400 leading-relaxed resize-y"
+                      placeholder={t("Digite ou edite suas queries SQL aqui...", "Type or edit your SQL queries here...")}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 text-left">
+                    <span className="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">SCRIPT LANGUAGE:</span>
+                    <textarea
+                      rows={10}
+                      value={sphereCustomScriptLanguage[currentCase.id] !== undefined ? sphereCustomScriptLanguage[currentCase.id] : getDefaultScriptLanguage(currentCase.id, currentCase.title)}
+                      onChange={(e) => {
+                        setSphereCustomScriptLanguage(prev => ({
+                          ...prev,
+                          [currentCase.id]: e.target.value
+                        }));
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 font-mono text-[11px] text-slate-800 focus:bg-white focus:border-sky-500 focus:outline-none selection:bg-sky-100 placeholder:text-slate-400 leading-relaxed resize-y"
+                      placeholder={t("# Digite ou edite seus scripts ou códigos aqui...", "# Type or edit your scripts or code here...")}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           ) : (
@@ -964,6 +1645,12 @@ export const TmsView: React.FC<TmsViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="p-3 bg-white border-t border-slate-200 flex justify-between items-center text-[10px] font-mono text-slate-400 shrink-0 shadow-sm">
+        <span></span>
+        <span>{t("Total:", "Total:")} {(sqliteDb.test_cases_sphere || []).length} {t("casos de testes arquivados", "test cases archived")}</span>
+      </footer>
 
       {/* Manual Execution Dialog */}
       {currentCase && (
