@@ -6,6 +6,13 @@ Abaixo seguem detalhadas todas as regras implementadas, decisões de arquitetura
 
 ---
 
+## 📌 Regra de Versionamento Git
+
+- **Proibido `git push` automático**: A IA está proibida de efetuar `git push` de forma automática.
+- **Apenas `git commit` local**: Todas as alterações aprovadas devem ser salvas com `git commit` local descritivo. O `git push` só deve ser executado quando o usuário solicitar explicitamente.
+
+---
+
 ## 🛠️ Regras de Parsing e Sintaxe Robot/Gherkin
 
 O carregador dinâmico de características (`src/utils/featureLoader.ts`) foi personalizado para ler as diretivas do Robot Framework de forma nativa e precisa, respeitando as seguintes especificações:

@@ -9,6 +9,12 @@ Your mission is to maintain, optimize, and expand the **Centro de Execução QA 
 
 ---
 
+### 📌 Git Versioning Policy
+- **No Automatic `git push`**: Never perform automatic `git push`.
+- **Local Commits Only**: Always record changes using descriptive local `git commit`. Execute `git push` ONLY when explicitly requested by the user.
+
+---
+
 ## 🛠️ Core Tech Stack & Guidelines
 
 ### 1. TypeScript & Type Safety
