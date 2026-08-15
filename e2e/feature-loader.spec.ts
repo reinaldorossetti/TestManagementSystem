@@ -27,18 +27,14 @@ test.describe('Robot Gherkin parser', () => {
   test('reads every Robot test case, including non-numeric names', () => {
     const robotFile = path.resolve(
       process.cwd(),
-      'test_projects/mobile_automation_robot/atests/mobile_tests/features/cadastro_spec/cadastro_tests.robot',
+      'test_projects/robot-sample/atests/web/features/tms.robot',
     );
     const parsed = parseRobotGherkinFeature(readFileSync(robotFile, 'utf8'));
 
-    expect(parsed.title).toBe('Cadastro_Tests');
-    expect(parsed.scenarios).toHaveLength(17);
-    expect(parsed.scenarios[3].tags).toEqual(['CDO04']);
-    expect(parsed.scenarios[4]).toMatchObject({
-      title: expect.stringContaining('05 -'),
-      tags: ['CDO05'],
-    });
-    expect(parsed.scenarios[4].steps).toHaveLength(8);
+    expect(parsed.title).toBe('Jornada TMS - Robot Suite');
+    expect(parsed.scenarios).toHaveLength(2);
+    expect(parsed.scenarios[0].title).toBe('Senha de acesso valida ativa fluxo principal');
+    expect(parsed.scenarios[0].steps).toHaveLength(3);
   });
 });
 

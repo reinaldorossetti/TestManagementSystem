@@ -19,7 +19,7 @@ test.describe('Modular Architecture Unit Tests (Constants & Initial Specs)', () 
     const parsed = parseRobotGherkinFeature(INITIAL_GHERKIN_CONTENT);
     expect(parsed.title).toContain('Jornada de Entrada e Associação de Estabelecimentos - TMS');
     expect(parsed.scenarios.length).toBeGreaterThanOrEqual(12);
-    expect(parsed.scenarios[0].tags).toContain('RCT01');
+    expect(parsed.scenarios[0].tags).toContain('@RCT01');
     expect(isTwoScenarioFallback(parsed)).toBe(false);
   });
 

@@ -41,6 +41,7 @@ import { Header } from './components/layout/Header';
 import { WorkspaceView } from './components/views/WorkspaceView';
 import { TerminalView } from './components/views/TerminalView';
 import { SqlExplorerView } from './components/views/SqlExplorerView';
+import { TmsView } from './components/views/TmsView';
 import { ExecutionReports } from './components/ExecutionReports';
 import { ConfigureTagModal } from './components/modals/ConfigureTagModal';
 import { SettingsModal } from './components/modals/SettingsModal';
@@ -62,6 +63,7 @@ import {
   type RobotProjectOption,
 } from './utils/robotTagLoader';
 import { createTranslator } from './utils/i18n';
+import type { ParsedFeature } from './utils/featureLoader';
 import { apiClient } from './lib/api/client';
 import { executeVirtualSQL, DbTestCaseSphere } from './utils/sqliteEngine';
 import { buildWorkspaceImportedCaseId, getDefaultSqlQuery, getDefaultScriptLanguage, normalizeImportedCaseTitleForMatch } from './constants/initialSpecs';
@@ -177,6 +179,43 @@ export default function App({ initialTab }: AppProps = {}) {
     setSqliteDb,
   });
 
+  const handleImportComplete = (parsed: ParsedFeature, filename: string) => {
+    const defaultFolder = selectedProjectFolder
+      ? resolveRobotFolderLabel(selectedProjectFolder)
+      : 'Workspace Importados';
+
+    const newCases: DbTestCaseSphere[] = parsed.scenarios.map((sc, idx) => ({
+      id: buildWorkspaceImportedCaseId(defaultFolder, sc.tags, sc.title, `TC-${String(idx + 1).padStart(2, '0')}`),
+      folder: defaultFolder,
+      title: sc.title,
+      preconditions: sc.tags.length > 0 ? `Tags: ${sc.tags.join(', ')}` : '',
+      steps: sc.steps.map((s) => `${s.rawType || s.type} ${s.text}`).join('\n'),
+      expected_result: 'Cenário executado com sucesso.',
+      created_at: new Date().toISOString(),
+    }));
+
+    setSqliteDb((prev) => {
+      const existingFolders = prev.test_folders || [];
+      const updatedFolders = existingFolders.includes(defaultFolder)
+        ? existingFolders
+        : [...existingFolders, defaultFolder];
+
+      const existingCasesMap = new Map((prev.test_cases_sphere || []).map((c) => [c.id, c]));
+      newCases.forEach((c) => existingCasesMap.set(c.id, c));
+
+      return {
+        ...prev,
+        test_folders: updatedFolders,
+        test_cases_sphere: Array.from(existingCasesMap.values()),
+      };
+    });
+
+    appendTerminalLog(
+      `[TMS] ${newCases.length} casos de teste criados e salvos na pasta "${defaultFolder}".`,
+      'success',
+    );
+  };
+
   const {
     gherkinContent,
     parsedFeature,
@@ -191,6 +230,7 @@ export default function App({ initialTab }: AppProps = {}) {
     selectedProjectFolder,
     applyExecutionTagsFromRobot,
     appendTerminalLog,
+    onImportComplete: handleImportComplete,
   });
 
   const {
@@ -206,6 +246,24 @@ export default function App({ initialTab }: AppProps = {}) {
     setSphereCustomScriptLanguage,
     manualExecutionDialogOpen,
     setManualExecutionDialogOpen,
+    isCreatingSphereTestCase,
+    setIsCreatingSphereTestCase,
+    isEditingSphereTestCase,
+    setIsEditingSphereTestCase,
+    formSphereId,
+    setFormSphereId,
+    formSphereFolder,
+    setFormSphereFolder,
+    formSphereTitle,
+    setFormSphereTitle,
+    formSpherePreconditions,
+    setFormSpherePreconditions,
+    formSphereSteps,
+    setFormSphereSteps,
+    formSphereExpectedResult,
+    setFormSphereExpectedResult,
+    formSphereObservation,
+    setFormSphereObservation,
   } = useSphereTestCases();
 
   // Modals & Navigation Drawers
@@ -295,6 +353,14 @@ export default function App({ initialTab }: AppProps = {}) {
     }
   };
 
+  const handleLoadMultipleTestCasesToWorkspace = (cases: DbTestCaseSphere[]) => {
+    if (cases.length === 0) return;
+    const firstCase = cases[0];
+    const tagMatch = firstCase.preconditions?.match(/@([A-Za-z0-9_-]+)/);
+    const tag = tagMatch?.[1] ? tagMatch[1] : undefined;
+    handleRunFeatureReal(tag);
+  };
+
   const handleSaveCurrentWorkspaceAsCases = () => {
     const defaultFolder = selectedProjectFolder
       ? resolveRobotFolderLabel(selectedProjectFolder)
@@ -310,10 +376,18 @@ export default function App({ initialTab }: AppProps = {}) {
       created_at: new Date().toISOString(),
     }));
 
-    setSqliteDb((prev) => ({
-      ...prev,
-      test_cases_sphere: [...(prev.test_cases_sphere || []), ...newCases],
-    }));
+    setSqliteDb((prev) => {
+      const existingFolders = prev.test_folders || [];
+      const updatedFolders = existingFolders.includes(defaultFolder)
+        ? existingFolders
+        : [...existingFolders, defaultFolder];
+
+      return {
+        ...prev,
+        test_folders: updatedFolders,
+        test_cases_sphere: [...(prev.test_cases_sphere || []), ...newCases],
+      };
+    });
     alert(`Importados ${newCases.length} casos de teste para a pasta "${defaultFolder}".`);
   };
 
@@ -460,6 +534,50 @@ export default function App({ initialTab }: AppProps = {}) {
               />
             </div>
           </>
+        )}
+
+        {activeTab === 'tms' && (
+          <div className="flex-1 flex flex-col min-h-0">
+            <TmsView
+              sqliteDb={sqliteDb}
+              setSqliteDb={setSqliteDb}
+              selectedSphereFolder={selectedSphereFolder}
+              setSelectedSphereFolder={setSelectedSphereFolder}
+              selectedSphereTestCaseId={selectedSphereTestCaseId}
+              setSelectedSphereTestCaseId={setSelectedSphereTestCaseId}
+              sphereSearchQuery={sphereSearchQuery}
+              setSphereSearchQuery={setSphereSearchQuery}
+              sphereTestCaseStatuses={sphereTestCaseStatuses}
+              sphereCustomSqlQuery={sphereCustomSqlQuery}
+              setSphereCustomSqlQuery={setSphereCustomSqlQuery}
+              sphereCustomScriptLanguage={sphereCustomScriptLanguage}
+              setSphereCustomScriptLanguage={setSphereCustomScriptLanguage}
+              manualExecutionDialogOpen={manualExecutionDialogOpen}
+              setManualExecutionDialogOpen={setManualExecutionDialogOpen}
+              isCreatingSphereTestCase={isCreatingSphereTestCase}
+              setIsCreatingSphereTestCase={setIsCreatingSphereTestCase}
+              isEditingSphereTestCase={isEditingSphereTestCase}
+              setIsEditingSphereTestCase={setIsEditingSphereTestCase}
+              formSphereId={formSphereId}
+              setFormSphereId={setFormSphereId}
+              formSphereFolder={formSphereFolder}
+              setFormSphereFolder={setFormSphereFolder}
+              formSphereTitle={formSphereTitle}
+              setFormSphereTitle={setFormSphereTitle}
+              formSpherePreconditions={formSpherePreconditions}
+              setFormSpherePreconditions={setFormSpherePreconditions}
+              formSphereSteps={formSphereSteps}
+              setFormSphereSteps={setFormSphereSteps}
+              formSphereExpectedResult={formSphereExpectedResult}
+              setFormSphereExpectedResult={setFormSphereExpectedResult}
+              formSphereObservation={formSphereObservation}
+              setFormSphereObservation={setFormSphereObservation}
+              handleRunSingleTestCaseReal={handleRunSingleTestCaseReal}
+              handleLoadMultipleTestCasesToWorkspace={handleLoadMultipleTestCasesToWorkspace}
+              handleRunFeatureReal={handleRunFeatureReal}
+              t={t}
+            />
+          </div>
         )}
 
         {activeTab === 'sqlite' && (

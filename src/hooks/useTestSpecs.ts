@@ -25,12 +25,14 @@ interface UseTestSpecsOptions {
     options?: { logPrefix?: string }
   ) => void;
   appendTerminalLog: (text: string, mode?: 'normal' | 'cmd' | 'success' | 'warn' | 'error' | 'header') => void;
+  onImportComplete?: (parsed: ParsedFeature, filename: string) => void;
 }
 
 export function useTestSpecs({
   selectedProjectFolder,
   applyExecutionTagsFromRobot,
   appendTerminalLog,
+  onImportComplete,
 }: UseTestSpecsOptions) {
   const [gherkinContent, setGherkinContent] = useState<string>(getInitialWorkspaceContent);
   const [parsedFeature, setParsedFeature] = useState<ParsedFeature>(() => {
@@ -84,6 +86,8 @@ export function useTestSpecs({
       appendTerminalLog(`[IMPORT] Arquivo "${filename}" carregado com sucesso via upload!`, 'success');
       appendTerminalLog(`==============================================================================`, 'header');
       appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste identificados com sucesso.`, 'success');
+
+      onImportComplete?.(parsed, filename);
 
       if (filename.toLowerCase().endsWith('.robot')) {
         const suiteExecutionTags = new Set(extractSuiteExecutionTags(text));
