@@ -336,7 +336,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               return (
                 <div
                   key={sc.id}
-                  onClick={() => setSelectedScenarioId((prev) => (prev === sc.id ? null : sc.id))}
+                  onClick={() => setSelectedScenarioId(selectedScenarioId === sc.id ? null : sc.id)}
                   data-testid={`terminal-scenario-card-${sc.id}`}
                   className={`bg-slate-900 border rounded-xl p-4 flex flex-col gap-3 transition-all cursor-pointer ${
                     isSelected ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30 shadow-lg shadow-[#FF6600]/5' : 'border-[#1e293b] hover:border-slate-700'
