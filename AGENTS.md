@@ -134,15 +134,15 @@ Para executar os testes do Robot Framework localmente, o ambiente Python da máq
 ### Comandos Robot por contexto
 
 - **Terminal Ao Vivo — suíte completa**: `python -m robot test_projects/` (`ROBOT_RUN_ALL_COMMAND`).
-- **Executar Feature** / **Executar Testes** — filtrado pela tag de suíte `Test Tags` ou `Force Tags` do arquivo selecionado (`buildFeatureRobotCommand()` em `robotCommands.ts`):
-   - `adicionar_dinheiro_via_boleto` → `python -m robot --outputdir "results/robot_framework/" -A project_args_file.txt --timestampoutputs -i adicionar_dinheiro_via_boleto ./`
-   - O comando usa `./`; o backend recebe `workingDirectory` com a pasta de origem em `test_projects/` para resolver argumentos e recursos relativos.
+- **Executar Feature** / **Executar Testes**:
+   - Compilado via `buildFeatureRobotCommand(tag, sourceFolder, argsFile)` em `src/utils/robotCommands.ts`.
+   - `Login_Feature` em `robot-sample` → `python -m robot --outputdir "results/" -i Login_Feature test_projects/robot-sample/`
+   - O argumento `-A` (arquivo de configuração) é incluído exclusivamente quando `argsFile` é preenchido manualmente com um arquivo `.args` / `.txt` válido. A pasta física do projeto (`sourceFolder`) é apontada como alvo direto da suíte (`test_projects/<sourceFolder>/`) e nunca deve ser passada no parâmetro de arquivo de argumentos.
    - `[Tags]` do cenário são usadas para o botão singular e para localizar o arquivo da feature; nunca substituem a tag de suíte (`Test Tags` ou `Force Tags`) na execução de feature.
-- **Executar Teste Automatizado** no detalhe TMS — usa `buildSingleTestRobotCommand()` e `--include`:
-   - `CT01` → `python -m robot --include CT01 ./`
-   - A tag é extraída das precondições/tag real do caso selecionado, nunca do `filterTag` global.
-   - `sourceFolder` é resolvido pelo metadado da tag em `/api/terminal/robot-tags` e enviado ao backend como `workingDirectory`; `''` explícito significa a raiz `test_projects/` e não deve cair para uma seleção antiga.
-- O **Comando Final Compilado** no painel lateral continua usando `buildFeatureRobotCommand()` e `-i` para execução de feature/suíte.
+- **Executar Teste Automatizado** (singular):
+   - Compilado via `buildSingleTestRobotCommand(tag, sourceFolder)` e `--include`.
+   - `LT01` em `robot-sample` → `python -m robot --outputdir "results/" --include LT01 test_projects/robot-sample/`
+- O **Comando Final Compilado** no painel lateral utiliza `buildFeatureRobotCommand()` e `-i` para execução da feature/suíte completa.
 
 ### Fluxo de execução real (`handleRunFeatureReal`)
 
