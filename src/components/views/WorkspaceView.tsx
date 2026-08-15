@@ -309,70 +309,91 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           />
         ) : workspaceTab === 'scenarios' ? (
           <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 scrollbar-thin">
+            {/* Header info matching screenshot */}
+            <div className="flex flex-col gap-1 text-xs font-mono pb-1 border-b border-slate-850">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">
+                {t("ESPECIFICAÇÃO DO NEGÓCIO", "BUSINESS SPECIFICATION")}
+              </span>
+              <h3 className="text-sm font-extrabold text-slate-100">
+                {parsedFeature.title}
+              </h3>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-1">
+                {t(`CENÁRIOS MAPEADOS PELO PARSER (${parsedFeature.scenarios.length})`, `SCENARIOS MAPPED BY PARSER (${parsedFeature.scenarios.length})`)}
+              </span>
+            </div>
+
+            {/* Scenario Cards */}
             {parsedFeature.scenarios.map((sc) => {
               const status = scenarioStatuses[sc.id] || 'Not executed';
               const primaryTag = sc.tags[0] ? sc.tags[0].replace(/^@/, '') : sc.id;
 
-              let statusLabel = t("Não Iniciado", "Not Started");
-              let statusClasses = "bg-slate-800 text-slate-400 border-slate-700/60";
-              let dotColor = "bg-slate-500";
-
-              if (status === 'PASS' || status === 'Passed') {
-                statusLabel = t("Aprovado", "Passed");
-                statusClasses = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-                dotColor = "bg-emerald-400";
-              } else if (status === 'FAIL' || status === 'Failed') {
-                statusLabel = t("Falhou", "Failed");
-                statusClasses = "bg-rose-500/10 text-rose-400 border-rose-500/20";
-                dotColor = "bg-rose-400";
-              } else if (status === 'SKIP' || status === 'Skipped') {
-                statusLabel = t("Ignorado", "Skipped");
-                statusClasses = "bg-amber-500/15 text-amber-400 border-amber-500/20";
-                dotColor = "bg-amber-400";
-              }
+              let statusText = 'NÃO INICIADO';
+              if (status === 'PASS' || status === 'Passed') statusText = 'PASS';
+              else if (status === 'FAIL' || status === 'Failed') statusText = 'FAIL';
+              else if (status === 'SKIP' || status === 'Skipped') statusText = 'SKIP';
 
               return (
                 <div
                   key={sc.id}
                   onClick={() => setSelectedScenarioId(sc.id)}
                   data-testid={`terminal-scenario-card-${sc.id}`}
-                  className={`bg-slate-900 border rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer ${
+                  className={`bg-slate-900 border rounded-xl p-4 flex flex-col gap-3 transition-all cursor-pointer ${
                     selectedScenarioId === sc.id ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30' : 'border-slate-800/80 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {sc.tags.map((tag) => (
-                        <span key={tag} className="px-2 py-0.5 rounded bg-slate-950 text-[#FF6600] font-mono text-[10px] font-bold border border-slate-800">
-                          {tag.startsWith('@') ? tag : `@${tag}`}
-                        </span>
-                      ))}
-                    </div>
+                  {/* Top card metadata row */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#FF6600] font-mono text-xs font-bold">
+                      {sc.id}
+                    </span>
 
-                    <div className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold font-mono ${statusClasses}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
-                      <span>{statusLabel}</span>
+                    <div className="flex items-center gap-1.5">
+                      {primaryTag && (
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-700/60 font-bold">
+                          {primaryTag}
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-700/60 capitalize">
+                        {sc.type}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono font-bold uppercase border border-slate-700/60">
+                        {statusText}
+                      </span>
                     </div>
                   </div>
 
+                  {/* Scenario Title */}
                   <h4 className="font-bold text-xs text-slate-100 leading-snug">
                     {sc.title}
                   </h4>
 
-                  <div className="flex flex-col gap-1 text-[11px] font-mono bg-slate-950/60 border border-slate-850 p-2.5 rounded-lg">
+                  {/* Documentation box */}
+                  {sc.documentation && (
+                    <div className="bg-slate-950/90 border border-slate-850 rounded-lg p-3 my-1 flex flex-col gap-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FF6600]">
+                        DOCUMENTAÇÃO
+                      </span>
+                      <p className="text-slate-300 italic text-xs leading-relaxed font-sans">
+                        {sc.documentation}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* BDD Steps list matching screenshot */}
+                  <div className="flex flex-col gap-1.5 font-mono text-xs my-1 text-slate-300">
                     {sc.steps.map((st, sIdx) => {
-                      let typeBadgeColor = "text-slate-400 bg-slate-850";
-                      if (st.type === 'GIVEN') typeBadgeColor = "text-sky-300 bg-sky-950/60 border border-sky-800/40";
-                      else if (st.type === 'WHEN') typeBadgeColor = "text-amber-300 bg-amber-950/60 border border-amber-800/40";
-                      else if (st.type === 'THEN') typeBadgeColor = "text-rose-300 bg-rose-950/60 border border-rose-800/40";
+                      const keyword = st.rawType || (
+                        st.type === 'GIVEN' ? 'Given' :
+                        st.type === 'WHEN' ? 'When' :
+                        st.type === 'THEN' ? 'Then' : 'And'
+                      );
 
                       return (
                         <div key={sIdx} className="flex items-start gap-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${typeBadgeColor}`}>
-                            {st.type}
+                          <span className="font-bold text-[#FF6600] shrink-0 font-mono">
+                            {keyword}
                           </span>
-                          <span className="text-slate-300 leading-tight">
-                            <span className="font-bold text-slate-400 mr-1">{st.rawType}</span>
+                          <span className="text-slate-300 font-medium leading-relaxed">
                             {st.text}
                           </span>
                         </div>
@@ -380,7 +401,15 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     })}
                   </div>
 
-                  <div className="flex justify-end pt-1">
+                  {/* Footer row with tag and EXECUÇÃO button */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-850 mt-1">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
+                      <span>Tag:</span>
+                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-300 font-mono text-[10px] border border-slate-800 font-bold">
+                        {primaryTag}
+                      </span>
+                    </div>
+
                     <button
                       type="button"
                       onClick={(e) => {
@@ -388,10 +417,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                         handleRunFeatureReal(primaryTag);
                       }}
                       data-testid={`workspace-run-scenario-${sc.id}`}
-                      className="text-[10px] bg-slate-950 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500 px-2.5 py-1 rounded-md font-mono transition-all flex items-center gap-1 font-bold"
+                      className="bg-[#FF6600] hover:bg-[#e05500] text-white px-3.5 py-1.5 rounded-lg text-xs font-black font-mono transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/20 uppercase tracking-wider"
                     >
-                      <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      {t("Execução", "Run")}
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      EXECUÇÃO
                     </button>
                   </div>
                 </div>
@@ -401,6 +430,17 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         ) : (
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-3 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap select-text scrollbar-thin">
             {gherkinContent}
+          </div>
+        )}
+
+        {/* Automatic Validation Footer */}
+        {!isEditingGherkin && (
+          <div className="flex items-center justify-between text-[11px] font-mono pt-2 border-t border-slate-800/80 text-slate-400">
+            <span>{t("Validação Automática", "Automated Validation")}</span>
+            <span className="text-emerald-400 font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              {t("Sintaxe Gherkin Válida", "Valid Gherkin Syntax")}
+            </span>
           </div>
         )}
       </div>

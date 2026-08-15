@@ -61,9 +61,15 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
    - Ao importar ou salvar uma nova especificação `.feature` (ou arquivo `.robot`, `.txt`), o status de execução de cada cenário é inicializado estritamente como **`Not executed`**, tendo em vista que os mesmos ainda não foram processados.
    - Esse status neutro permanecerá visível em cada cartão até que uma execução pontual de teste ("Execução") ou a execução completa ("Executar Feature") seja efetivada, momento em que o status será atualizado dinamicamente para os resultados de tempo de execução real (**`PASS`**, **`FAIL`** de erro ou **`SKIP`**).
 
-4. **Cardinalidade durante o armazenamento**:
-   - A importação deve preservar todos os cenários válidos da suíte Robot. A suíte local `cadastro_tests.robot` deve manter os 17 casos atuais no Workspace e no TMS.
-   - Títulos de prosa repetidos não identificam sozinhos um caso: quando houver tags/IDs diferentes, não mesclar os casos. A reconciliação deve priorizar o ID estável e só usar título normalizado quando houver uma correspondência única.
+5. **Regra de Renderização dos Cartões de Teste BDD no Workspace (`/terminal`)**:
+   - Ao importar ou carregar uma especificação, o Workspace deve exibir imediatamente a lista de cartões de cenários mapeados pelo parser com a especificação do negócio (`parsedFeature.title`) e o contador de cenários (`CENÁRIOS MAPEADOS PELO PARSER (N)`).
+   - **Estrutura Visual Canônica do Cartão de Teste**:
+     - **Cabeçalho superior**: ID do cenário em destaque laranja (`SC_ROBOT_001`), badge de tag (ex.: `LT01`), tipo de teste (`Success`/`Failure`/`Permission`) e badge de status (`NÃO INICIADO` / `PASS` / `FAIL` / `SKIP`).
+     - **Título do Cenário**: Título em destaque (`CT01 - Login valido...`).
+     - **Bloco de Documentação**: Quando presente (`[Documentation]`), exibir container escuro com rótulo `DOCUMENTAÇÃO` em laranja e a prosa explicativa em itálico.
+     - **Passos BDD em Prosa**: Exibir cada passo com a palavra-chave BDD em destaque laranja (`Given que`, `When`, `Then`, `And`, `Dado`, `Quando`, `Então`, `E`) e o texto do passo.
+     - **Rodapé do Cartão**: Tag do cenário à esquerda e botão de ação laranja **`▶ EXECUÇÃO`** (`bg-[#FF6600]`) à direita para executar o teste individual.
+   - **Rodapé do Painel Workspace**: Exibir a mensagem **Validação Automática** com **`✔ Sintaxe Gherkin Válida`** em verde.
 
 ---
 

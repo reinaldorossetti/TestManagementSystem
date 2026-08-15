@@ -66,9 +66,10 @@ When processing `.feature` (Gherkin/Robot) specifications, follow the custom `fe
    - All executed scenarios, test steps, terminal result logs, and analytics metrics must display **`Passed`** instead of raw technical codes like **`PASS`**.
    - Suffix the lifecycle statuses appropriately in localized formats: `Not Started` / `Não Iniciado`, `In Progress` / `Em Progresso`, `Passed` / `Aprovado`, `Failed` / `Falhou`, `Blocked` / `Bloqueado`, `Skipped` / `Ignorado`.
 
-4. **Suite versus case tags**:
-  - `Test Tags` and `Force Tags` are suite/folder metadata; they must not replace the case-level `[Tags]`/`@` badge in TMS cards.
-  - Preserve `sourceFile` and `sourceFolder` from `/api/terminal/robot-tags` when compiling commands. An explicit empty `sourceFolder` means the `test_projects/` root.
+5. **Workspace BDD Scenario Card Layout**:
+  - The Terminal workspace must render parsed scenarios with business specification headers (`ESPECIFICAÇÃO DO NEGÓCIO`, `parsedFeature.title`, `CENÁRIOS MAPEADOS PELO PARSER (N)`).
+  - Each scenario card must include scenario ID (`SC_ROBOT_001`), primary tag, test type (`Success`/`Failure`), status badge (`NÃO INICIADO`), scenario title, `[Documentation]` box in dark orange border if documentation exists, BDD prose step keywords (`Given`, `When`, `Then`, `And`) highlighted in `#FF6600`, tag badge, and orange singular action button **`▶ EXECUÇÃO`** (`bg-[#FF6600]`).
+  - The bottom panel footer must display **Validação Automática** with **`✔ Sintaxe Gherkin Válida`** in emerald text.
 
 ---
 
