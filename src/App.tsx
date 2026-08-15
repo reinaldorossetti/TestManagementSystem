@@ -107,11 +107,19 @@ export default function App({ initialTab }: AppProps = {}) {
   const {
     sqliteDb,
     setSqliteDb,
-    handleResetDatabase,
-    handleClearExecutionHistory,
-    sphereTestCaseStatuses,
-    setSphereTestCaseStatuses,
+    reset: handleResetDatabase,
+    clearExecutions: handleClearExecutionHistory,
   } = useDatabase();
+
+  const [sphereTestCaseStatuses, setSphereTestCaseStatuses] = useState<Record<string, string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('cardmais_sphere_statuses');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return {};
+  });
 
   // Robot output directory settings
   const [robotResultsDirectory, setRobotResultsDirectory] = useState('results/');
