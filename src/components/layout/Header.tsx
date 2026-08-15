@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Sliders className="w-3.5 h-3.5 text-[#FF6600] group-hover:rotate-12 transition-transform" />
           <span className="leading-none">{t("Navegar Painéis", "Navigate Panels")}</span>
           <span className="bg-[#FF6600] text-slate-950 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-black shadow-inner leading-none">
-            {activeTab === 'terminal' ? t('Terminal', 'Terminal') : activeTab === 'sqlite' ? t('Histórico', 'History') : activeTab === 'reports' ? t('Relatórios', 'Reports') : t('Emulador', 'Emulator')}
+            {activeTab === 'terminal' ? t('Terminal', 'Terminal') : activeTab === 'sqlite' ? t('Histórico', 'History') : activeTab === 'reports' ? t('Relatórios', 'Reports') : activeTab === 'tms' ? t('TMS', 'TMS') : t('Emulador', 'Emulator')}
           </span>
         </button>
       </div>
