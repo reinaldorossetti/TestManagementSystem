@@ -207,7 +207,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           </div>
         )}
 
-        <div className="flex justify-between items-center pb-2 border-b border-slate-800/60 relative z-10 flex-wrap gap-2">
+        <div className="flex justify-between items-center pb-2 border-b border-[#1e293b] relative z-10 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <FileCode className="w-4 h-4 text-emerald-400" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
@@ -221,7 +221,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="terminal-import-file-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-slate-800 hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-[#1e293b] hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
                 title={t("Selecione um arquivo Gherkin/Robot do seu computador", "Select Gherkin/Robot file from your computer")}
               >
                 <Upload className="w-3.5 h-3.5 text-[#FF6600]" />
@@ -274,7 +274,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
         {/* View Mode Toggle Tabs */}
         {!isEditingGherkin && (
-          <div className="flex border-b border-slate-800/80 text-[10px] font-mono gap-1 pb-1.5">
+          <div className="flex border-b border-[#1e293b] text-[10px] font-mono gap-1 pb-1.5">
             <button
               type="button"
               onClick={() => setWorkspaceTab('scenarios')}
@@ -310,7 +310,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         ) : workspaceTab === 'scenarios' ? (
           <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 scrollbar-thin">
             {/* Header info matching screenshot */}
-            <div className="flex flex-col gap-1 text-xs font-mono pb-1 border-b border-slate-800">
+            <div className="flex flex-col gap-1 text-xs font-mono pb-1 border-b border-[#1e293b]">
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">
                 {t("ESPECIFICAÇÃO DO NEGÓCIO", "BUSINESS SPECIFICATION")}
               </span>
@@ -338,7 +338,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                   onClick={() => setSelectedScenarioId(sc.id)}
                   data-testid={`terminal-scenario-card-${sc.id}`}
                   className={`bg-slate-900 border rounded-xl p-4 flex flex-col gap-3 transition-all cursor-pointer ${
-                    selectedScenarioId === sc.id ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30' : 'border-slate-800/80 hover:border-slate-700'
+                    selectedScenarioId === sc.id ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30' : 'border-[#1e293b] hover:border-slate-700'
                   }`}
                 >
                   {/* Top card metadata row */}
@@ -369,7 +369,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
                   {/* Documentation box */}
                   {sc.documentation && (
-                    <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-3 my-1 flex flex-col gap-1">
+                    <div className="bg-slate-950/90 border border-[#1e293b] rounded-lg p-3 my-1 flex flex-col gap-1">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FF6600]">
                         DOCUMENTAÇÃO
                       </span>
@@ -402,10 +402,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                   </div>
 
                   {/* Footer row with tag and EXECUÇÃO button */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800 mt-1">
+                  <div className="flex items-center justify-between pt-2 border-t border-[#1e293b] mt-1">
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
                       <span>Tag:</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-300 font-mono text-[10px] border border-slate-800 font-bold">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-300 font-mono text-[10px] border border-[#1e293b] font-bold">
                         {primaryTag}
                       </span>
                     </div>
@@ -428,14 +428,14 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             })}
           </div>
         ) : (
-          <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-3 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap select-text scrollbar-thin">
+          <div className="flex-1 bg-slate-900 border border-[#1e293b] rounded-lg p-3 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap select-text scrollbar-thin">
             {gherkinContent}
           </div>
         )}
 
         {/* Automatic Validation Footer */}
         {!isEditingGherkin && (
-          <div className="flex items-center justify-between text-[11px] font-mono pt-2 border-t border-slate-800/80 text-slate-400">
+          <div className="flex items-center justify-between text-[11px] font-mono pt-2 border-t border-[#1e293b] text-slate-400">
             <span>{t("Validação Automática", "Automated Validation")}</span>
             <span className="text-emerald-400 font-bold flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
