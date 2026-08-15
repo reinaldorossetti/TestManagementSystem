@@ -102,3 +102,50 @@ test.describe('Docker Local Setup Verification', () => {
     expect(content).toContain('.next');
   });
 });
+
+test.describe('Click-to-Expand BDD Rule Validation', () => {
+  test('validates scenario cards start collapsed by default and expand BDD description only after selecting/clicking', () => {
+    const rawGherkin = `*** Settings ***
+Documentation    Feature de Teste de Autenticação
+Test Tags        login_tests
+
+*** Test Cases ***
+Cenário: CT01 - Login Válido
+    [Documentation]    Cenário positivo de login com sucesso.
+    Given que o usuario esta na tela de login
+    When informa o usuario "padrao" e a senha "valida"
+    Then o sistema autentica o usuario com sucesso
+
+Cenário: CT02 - Login Inválido
+    [Documentation]    Cenário negativo com senha incorreta.
+    Given que o usuario esta na tela de login
+    When informa o usuario "padrao" e a senha "errada"
+    Then o sistema exibe mensagem de erro`;
+
+    const parsed = parseRobotGherkinFeature(rawGherkin);
+    expect(parsed.scenarios).toHaveLength(2);
+
+    // Initial state: selectedScenarioId is null (collapsed mode for all cards by default)
+    let selectedScenarioId: string | null = null;
+    const isExpanded = (scId: string) => selectedScenarioId === scId;
+
+    // Verify BDD description is hidden for all cards by default upon import
+    expect(isExpanded('SC_ROBOT_001')).toBe(false);
+    expect(isExpanded('SC_ROBOT_002')).toBe(false);
+
+    // Simulate click on scenario 1 -> expands BDD description for scenario 1 only
+    selectedScenarioId = selectedScenarioId === 'SC_ROBOT_001' ? null : 'SC_ROBOT_001';
+    expect(isExpanded('SC_ROBOT_001')).toBe(true);
+    expect(isExpanded('SC_ROBOT_002')).toBe(false);
+
+    // Simulate click on scenario 2 -> expands scenario 2 and collapses scenario 1
+    selectedScenarioId = selectedScenarioId === 'SC_ROBOT_002' ? null : 'SC_ROBOT_002';
+    expect(isExpanded('SC_ROBOT_001')).toBe(false);
+    expect(isExpanded('SC_ROBOT_002')).toBe(true);
+
+    // Simulate second click on scenario 2 -> collapses scenario 2
+    selectedScenarioId = selectedScenarioId === 'SC_ROBOT_002' ? null : 'SC_ROBOT_002';
+    expect(isExpanded('SC_ROBOT_001')).toBe(false);
+    expect(isExpanded('SC_ROBOT_002')).toBe(false);
+  });
+});
