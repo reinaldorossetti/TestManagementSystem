@@ -125,6 +125,9 @@ export const NavDrawerModal: React.FC<NavDrawerModalProps> = ({
                 onClick={() => {
                   setActiveTab(panel.id);
                   onClose();
+                  if (typeof window !== 'undefined') {
+                    window.location.assign(`/${panel.id}`);
+                  }
                 }}
                 data-testid={`nav-panel-item-${panel.id}`}
                 className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 relative overflow-hidden group ${

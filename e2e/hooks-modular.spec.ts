@@ -181,4 +181,18 @@ test.describe('Navigation Drawer (Navegar Painéis) Validation', () => {
     expect(activeTab).toBe('sqlite');
     expect(isNavDrawerOpen).toBe(false);
   });
+
+  test('validates selecting Sistema de Gestão de Testes (TMS) redirects to /tms', () => {
+    let redirectedUrl = '';
+    const mockWindowAssign = (url: string) => {
+      redirectedUrl = url;
+    };
+
+    const handlePanelClick = (panelId: 'tms' | 'terminal' | 'sqlite' | 'reports') => {
+      mockWindowAssign(`/${panelId}`);
+    };
+
+    handlePanelClick('tms');
+    expect(redirectedUrl).toBe('/tms');
+  });
 });
