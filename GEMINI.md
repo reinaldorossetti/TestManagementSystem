@@ -68,7 +68,8 @@ When processing `.feature` (Gherkin/Robot) specifications, follow the custom `fe
 
 5. **Workspace BDD Scenario Card Layout**:
   - The Terminal workspace must render parsed scenarios with business specification headers (`ESPECIFICAÇÃO DO NEGÓCIO`, `parsedFeature.title`, `CENÁRIOS MAPEADOS PELO PARSER (N)`).
-  - Each scenario card must include scenario ID (`SC_ROBOT_001`), primary tag, test type (`Success`/`Failure`), status badge (`NÃO INICIADO`), scenario title, `[Documentation]` box in dark orange border if documentation exists, BDD prose step keywords (`Given`, `When`, `Then`, `And`) highlighted in `#FF6600`, tag badge, and orange singular action button **`▶ EXECUÇÃO`** (`bg-[#FF6600]`).
+  - **Click-to-Expand BDD Mandate**: By default upon import, scenario cards start in collapsed mode (showing header, title, tags, and run button). The BDD description (`[Documentation]` and BDD steps) remains hidden until the operator clicks on a scenario card (`isSelected`), expanding its details. Clicking again collapses it.
+  - Each scenario card includes scenario ID (`SC_ROBOT_001`), primary tag, test type (`Success`/`Failure`), status badge (`NÃO INICIADO`), scenario title, and when expanded, `[Documentation]` box in dark orange border and BDD prose step keywords (`Given`, `When`, `Then`, `And`) highlighted in `#FF6600`.
   - The bottom panel footer must display **Validação Automática** with **`✔ Sintaxe Gherkin Válida`** in emerald text.
 
 ---

@@ -326,6 +326,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             {parsedFeature.scenarios.map((sc) => {
               const status = scenarioStatuses[sc.id] || 'Not executed';
               const primaryTag = sc.tags[0] ? sc.tags[0].replace(/^@/, '') : sc.id;
+              const isSelected = selectedScenarioId === sc.id;
 
               let statusText = 'NÃO INICIADO';
               if (status === 'PASS' || status === 'Passed') statusText = 'PASS';
@@ -335,10 +336,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               return (
                 <div
                   key={sc.id}
-                  onClick={() => setSelectedScenarioId(sc.id)}
+                  onClick={() => setSelectedScenarioId((prev) => (prev === sc.id ? null : sc.id))}
                   data-testid={`terminal-scenario-card-${sc.id}`}
                   className={`bg-slate-900 border rounded-xl p-4 flex flex-col gap-3 transition-all cursor-pointer ${
-                    selectedScenarioId === sc.id ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30' : 'border-[#1e293b] hover:border-slate-700'
+                    isSelected ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30 shadow-lg shadow-[#FF6600]/5' : 'border-[#1e293b] hover:border-slate-700'
                   }`}
                 >
                   {/* Top card metadata row */}
@@ -367,39 +368,42 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     {sc.title}
                   </h4>
 
-                  {/* Documentation box */}
-                  {sc.documentation && (
-                    <div className="bg-slate-950/90 border border-[#1e293b] rounded-lg p-3 my-1 flex flex-col gap-1">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FF6600]">
-                        DOCUMENTAÇÃO
-                      </span>
-                      <p className="text-slate-300 italic text-xs leading-relaxed font-sans">
-                        {sc.documentation}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* BDD Steps list matching screenshot */}
-                  <div className="flex flex-col gap-1.5 font-mono text-xs my-1 text-slate-300">
-                    {sc.steps.map((st, sIdx) => {
-                      const keyword = st.rawType || (
-                        st.type === 'GIVEN' ? 'Given' :
-                        st.type === 'WHEN' ? 'When' :
-                        st.type === 'THEN' ? 'Then' : 'And'
-                      );
-
-                      return (
-                        <div key={sIdx} className="flex items-start gap-1.5">
-                          <span className="font-bold text-[#FF6600] shrink-0 font-mono">
-                            {keyword}
+                  {/* Expanded BDD Content: Documentation box & Steps list (rendered only when card is clicked/selected) */}
+                  {isSelected && (
+                    <>
+                      {sc.documentation && (
+                        <div className="bg-slate-950/90 border border-[#1e293b] rounded-lg p-3 my-1 flex flex-col gap-1">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FF6600]">
+                            DOCUMENTAÇÃO
                           </span>
-                          <span className="text-slate-300 font-medium leading-relaxed">
-                            {st.text}
-                          </span>
+                          <p className="text-slate-300 italic text-xs leading-relaxed font-sans">
+                            {sc.documentation}
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+
+                      <div className="flex flex-col gap-1.5 font-mono text-xs my-1 text-slate-300">
+                        {sc.steps.map((st, sIdx) => {
+                          const keyword = st.rawType || (
+                            st.type === 'GIVEN' ? 'Given' :
+                            st.type === 'WHEN' ? 'When' :
+                            st.type === 'THEN' ? 'Then' : 'And'
+                          );
+
+                          return (
+                            <div key={sIdx} className="flex items-start gap-1.5">
+                              <span className="font-bold text-[#FF6600] shrink-0 font-mono">
+                                {keyword}
+                              </span>
+                              <span className="text-slate-300 font-medium leading-relaxed">
+                                {st.text}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
 
                   {/* Footer row with tag and EXECUÇÃO button */}
                   <div className="flex items-center justify-between pt-2 border-t border-[#1e293b] mt-1">

@@ -63,11 +63,15 @@ Implementamos uma gestão limpa do estado ao importar novos arquivos de testes `
 
 5. **Regra de Renderização dos Cartões de Teste BDD no Workspace (`/terminal`)**:
    - Ao importar ou carregar uma especificação, o Workspace deve exibir imediatamente a lista de cartões de cenários mapeados pelo parser com a especificação do negócio (`parsedFeature.title`) e o contador de cenários (`CENÁRIOS MAPEADOS PELO PARSER (N)`).
+   - **Comportamento Padrão de Expansão no Clique**:
+     - Por padrão, ao importar os testes, os cartões de cenários são iniciados no estado **recolhido** (exibindo apenas cabeçalho com ID/tags/status, título do cenário e o rodapé com botão de execução).
+     - A descrição do BDD (bloco de **DOCUMENTAÇÃO** e os **Passos BDD em Prosa**) permanece oculta por padrão e é exibida **exclusivamente após o clique do operador no cartão de teste** (`isSelected`). O clique subsequente no cartão recolhe novamente os detalhes.
    - **Estrutura Visual Canônica do Cartão de Teste**:
      - **Cabeçalho superior**: ID do cenário em destaque laranja (`SC_ROBOT_001`), badge de tag (ex.: `LT01`), tipo de teste (`Success`/`Failure`/`Permission`) e badge de status (`NÃO INICIADO` / `PASS` / `FAIL` / `SKIP`).
      - **Título do Cenário**: Título em destaque (`CT01 - Login valido...`).
-     - **Bloco de Documentação**: Quando presente (`[Documentation]`), exibir container escuro com rótulo `DOCUMENTAÇÃO` em laranja e a prosa explicativa em itálico.
-     - **Passos BDD em Prosa**: Exibir cada passo com a palavra-chave BDD em destaque laranja (`Given que`, `When`, `Then`, `And`, `Dado`, `Quando`, `Então`, `E`) e o texto do passo.
+     - **Conteúdo Expandido (apenas ao clicar)**:
+       - **Bloco de Documentação**: Quando presente (`[Documentation]`), container escuro com rótulo `DOCUMENTAÇÃO` em laranja e a prosa explicativa em itálico.
+       - **Passos BDD em Prosa**: Cada passo com a palavra-chave BDD em destaque laranja (`Given que`, `When`, `Then`, `And`, `Dado`, `Quando`, `Então`, `E`) e o texto do passo.
      - **Rodapé do Cartão**: Tag do cenário à esquerda e botão de ação laranja **`▶ EXECUÇÃO`** (`bg-[#FF6600]`) à direita para executar o teste individual.
    - **Rodapé do Painel Workspace**: Exibir a mensagem **Validação Automática** com **`✔ Sintaxe Gherkin Válida`** em verde.
 
