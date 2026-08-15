@@ -418,6 +418,90 @@ export default function App({ initialTab }: AppProps = {}) {
     return { totalExecutions, totalPassedExecutions, totalPassRate, averageDuration, totalStepsRow };
   }, [sqliteDb]);
 
+  if (activeTab === 'tms') {
+    return (
+      <div className="w-screen h-screen bg-slate-50 text-slate-850 flex flex-col font-sans select-none antialiased overflow-hidden">
+        <TmsView
+          sqliteDb={sqliteDb}
+          setSqliteDb={setSqliteDb}
+          selectedSphereFolder={selectedSphereFolder}
+          setSelectedSphereFolder={setSelectedSphereFolder}
+          selectedSphereTestCaseId={selectedSphereTestCaseId}
+          setSelectedSphereTestCaseId={setSelectedSphereTestCaseId}
+          sphereSearchQuery={sphereSearchQuery}
+          setSphereSearchQuery={setSphereSearchQuery}
+          sphereTestCaseStatuses={sphereTestCaseStatuses}
+          sphereCustomSqlQuery={sphereCustomSqlQuery}
+          setSphereCustomSqlQuery={setSphereCustomSqlQuery}
+          sphereCustomScriptLanguage={sphereCustomScriptLanguage}
+          setSphereCustomScriptLanguage={setSphereCustomScriptLanguage}
+          manualExecutionDialogOpen={manualExecutionDialogOpen}
+          setManualExecutionDialogOpen={setManualExecutionDialogOpen}
+          isCreatingSphereTestCase={isCreatingSphereTestCase}
+          setIsCreatingSphereTestCase={setIsCreatingSphereTestCase}
+          isEditingSphereTestCase={isEditingSphereTestCase}
+          setIsEditingSphereTestCase={setIsEditingSphereTestCase}
+          formSphereId={formSphereId}
+          setFormSphereId={setFormSphereId}
+          formSphereFolder={formSphereFolder}
+          setFormSphereFolder={setFormSphereFolder}
+          formSphereTitle={formSphereTitle}
+          setFormSphereTitle={setFormSphereTitle}
+          formSpherePreconditions={formSpherePreconditions}
+          setFormSpherePreconditions={setFormSpherePreconditions}
+          formSphereSteps={formSphereSteps}
+          setFormSphereSteps={setFormSphereSteps}
+          formSphereExpectedResult={formSphereExpectedResult}
+          setFormSphereExpectedResult={setFormSphereExpectedResult}
+          formSphereObservation={formSphereObservation}
+          setFormSphereObservation={setFormSphereObservation}
+          handleRunSingleTestCaseReal={handleRunSingleTestCaseReal}
+          handleLoadMultipleTestCasesToWorkspace={handleLoadMultipleTestCasesToWorkspace}
+          handleRunFeatureReal={handleRunFeatureReal}
+          t={t}
+        />
+        <ConfigureTagModal
+          isOpen={isTagModalOpen}
+          onClose={() => setIsTagModalOpen(false)}
+          executionTags={executionTags}
+          filterTag={filterTag}
+          onSaveEditTag={(idx, value, label) => {
+            setExecutionTags(prev => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], value, label };
+              return next;
+            });
+          }}
+          onDeleteTag={(val) => {
+            setExecutionTags(prev => prev.filter(t => t.value !== val));
+          }}
+          onAddTag={(value, label) => {
+            setExecutionTags(prev => [...prev, { value, label: label || `@${value}` }]);
+            setFilterTag(value);
+          }}
+          t={t}
+        />
+        <SettingsModal
+          isOpen={isConfigOpen}
+          onClose={() => setIsConfigOpen(false)}
+          robotResultsDirectory={robotResultsDirectory}
+          setRobotResultsDirectory={setRobotResultsDirectory}
+          onSaveRobotResultsDirectory={handleSaveRobotResultsDirectory}
+          isSavingRobotResultsDirectory={isSavingRobotResultsDirectory}
+          onResetDatabase={handleResetDatabase}
+          t={t}
+        />
+        <NavDrawerModal
+          isOpen={isNavDrawerOpen}
+          onClose={() => setIsNavDrawerOpen(false)}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          t={t}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none antialiased">
       {/* Header Bar */}
@@ -535,50 +619,6 @@ export default function App({ initialTab }: AppProps = {}) {
               />
             </div>
           </>
-        )}
-
-        {activeTab === 'tms' && (
-          <div className="flex-1 flex flex-col min-h-0">
-            <TmsView
-              sqliteDb={sqliteDb}
-              setSqliteDb={setSqliteDb}
-              selectedSphereFolder={selectedSphereFolder}
-              setSelectedSphereFolder={setSelectedSphereFolder}
-              selectedSphereTestCaseId={selectedSphereTestCaseId}
-              setSelectedSphereTestCaseId={setSelectedSphereTestCaseId}
-              sphereSearchQuery={sphereSearchQuery}
-              setSphereSearchQuery={setSphereSearchQuery}
-              sphereTestCaseStatuses={sphereTestCaseStatuses}
-              sphereCustomSqlQuery={sphereCustomSqlQuery}
-              setSphereCustomSqlQuery={setSphereCustomSqlQuery}
-              sphereCustomScriptLanguage={sphereCustomScriptLanguage}
-              setSphereCustomScriptLanguage={setSphereCustomScriptLanguage}
-              manualExecutionDialogOpen={manualExecutionDialogOpen}
-              setManualExecutionDialogOpen={setManualExecutionDialogOpen}
-              isCreatingSphereTestCase={isCreatingSphereTestCase}
-              setIsCreatingSphereTestCase={setIsCreatingSphereTestCase}
-              isEditingSphereTestCase={isEditingSphereTestCase}
-              setIsEditingSphereTestCase={setIsEditingSphereTestCase}
-              formSphereId={formSphereId}
-              setFormSphereId={setFormSphereId}
-              formSphereFolder={formSphereFolder}
-              setFormSphereFolder={setFormSphereFolder}
-              formSphereTitle={formSphereTitle}
-              setFormSphereTitle={setFormSphereTitle}
-              formSpherePreconditions={formSpherePreconditions}
-              setFormSpherePreconditions={setFormSpherePreconditions}
-              formSphereSteps={formSphereSteps}
-              setFormSphereSteps={setFormSphereSteps}
-              formSphereExpectedResult={formSphereExpectedResult}
-              setFormSphereExpectedResult={setFormSphereExpectedResult}
-              formSphereObservation={formSphereObservation}
-              setFormSphereObservation={setFormSphereObservation}
-              handleRunSingleTestCaseReal={handleRunSingleTestCaseReal}
-              handleLoadMultipleTestCasesToWorkspace={handleLoadMultipleTestCasesToWorkspace}
-              handleRunFeatureReal={handleRunFeatureReal}
-              t={t}
-            />
-          </div>
         )}
 
         {activeTab === 'sqlite' && (
