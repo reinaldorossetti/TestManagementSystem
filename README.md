@@ -6,6 +6,12 @@ A aplicação é construída como um projeto **full-stack Next.js 16 (App Router
 
 Este documento detalha o funcionamento técnico, a arquitetura full-stack, as regras de negócio de parsing, os mecanismos de sincronização, o design relacional do banco e como instalar, executar e testar o projeto.
 
+> 🌐 **Demonstração Online no GitHub Pages:**
+> [https://reinaldorossetti.github.io/TestManagementSystem/](https://reinaldorossetti.github.io/TestManagementSystem/)
+>
+> 📦 **Imagem Docker no GitHub Container Registry (GHCR):**
+> [`ghcr.io/reinaldorossetti/testmanagementsystem:latest`](https://github.com/reinaldorossetti/TestManagementSystem/pkgs/container/testmanagementsystem)
+
 > ℹ️ **Nota de arquitetura:** versões anteriores deste projeto rodavam em Vite + Express com SQLite virtualizado no navegador (localStorage + `StorageEvent`). O projeto foi migrado para **Next.js 16 + Prisma + SQLite real**, com uma camada de dados em `src/server` (repositories/services/validation) exposta por uma API REST em `app/api`.
 
 ---
@@ -175,6 +181,8 @@ npm run docker:up
 ```
 
 #### 🌐 IP e Porta de Acesso à Aplicação:
+- **Demonstração Web (GitHub Pages):** [https://reinaldorossetti.github.io/TestManagementSystem/](https://reinaldorossetti.github.io/TestManagementSystem/)
+- **Imagem Docker (GHCR):** `ghcr.io/reinaldorossetti/testmanagementsystem:latest`
 - **URL Local / Host:** `http://localhost:3000` ou `http://127.0.0.1:3000`
 - **Endereço IP (Rede Local / Bind Container):** `http://0.0.0.0:3000` (acessível no IP da máquina na porta `3000`)
 - **Porta:** `3000` (mapeada `3000:3000` no Docker Compose)
