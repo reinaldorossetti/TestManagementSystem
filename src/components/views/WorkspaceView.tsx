@@ -221,7 +221,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="terminal-import-file-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-slate-850 hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-slate-800 hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
                 title={t("Selecione um arquivo Gherkin/Robot do seu computador", "Select Gherkin/Robot file from your computer")}
               >
                 <Upload className="w-3.5 h-3.5 text-[#FF6600]" />
@@ -234,7 +234,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                   setIsEditingGherkin(true);
                 }}
                 data-testid="terminal-edit-gherkin-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1"
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1"
               >
                 <Edit className="w-3.5 h-3.5 text-sky-400" />
                 {t("Editar Gherkin", "Edit Gherkin")}
@@ -243,7 +243,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 type="button"
                 onClick={handleSaveCurrentWorkspaceAsCases}
                 data-testid="terminal-store-tests-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2 py-1 rounded border border-amber-800/60 hover:border-amber-700 text-amber-400 transition-all font-mono flex items-center gap-1 font-bold"
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-amber-800/60 hover:border-amber-700 text-amber-400 transition-all font-mono flex items-center gap-1 font-bold"
                 title={t("Armazenar todos os cenários individuais como casos de teste no TMS", "Store all individual scenarios as test cases in TMS")}
               >
                 <Database className="w-3.5 h-3.5 text-amber-500" />
@@ -264,7 +264,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 type="button"
                 onClick={() => setIsEditingGherkin(false)}
                 data-testid="terminal-cancel-gherkin-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-850 px-2.5 py-1 rounded border border-slate-700 text-slate-400 transition-all"
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2.5 py-1 rounded border border-slate-700 text-slate-400 transition-all"
               >
                 {t("Cancelar", "Cancel")}
               </button>
@@ -310,7 +310,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         ) : workspaceTab === 'scenarios' ? (
           <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 scrollbar-thin">
             {/* Header info matching screenshot */}
-            <div className="flex flex-col gap-1 text-xs font-mono pb-1 border-b border-slate-850">
+            <div className="flex flex-col gap-1 text-xs font-mono pb-1 border-b border-slate-800">
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">
                 {t("ESPECIFICAÇÃO DO NEGÓCIO", "BUSINESS SPECIFICATION")}
               </span>
@@ -369,7 +369,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
                   {/* Documentation box */}
                   {sc.documentation && (
-                    <div className="bg-slate-950/90 border border-slate-850 rounded-lg p-3 my-1 flex flex-col gap-1">
+                    <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-3 my-1 flex flex-col gap-1">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FF6600]">
                         DOCUMENTAÇÃO
                       </span>
@@ -402,7 +402,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                   </div>
 
                   {/* Footer row with tag and EXECUÇÃO button */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-850 mt-1">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800 mt-1">
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
                       <span>Tag:</span>
                       <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-300 font-mono text-[10px] border border-slate-800 font-bold">
