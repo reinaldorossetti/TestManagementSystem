@@ -147,15 +147,15 @@ export function useTerminalRunner({
         ? executionTags.find((opt) => opt.value === overrideNormalized)
         : null;
 
-      if (tagOverride && tagMeta) {
-        const folder = tagMeta.sourceFolder ?? selectedProjectFolder ?? '';
+      if (tagOverride) {
+        const folder = tagMeta?.sourceFolder ?? selectedProjectFolder ?? '';
 
         return {
           resolvedTag: tagOverride,
           workingFolder: folder,
           command: buildFeatureRobotCommand(
             tagOverride,
-            tagMeta.sourceFile,
+            tagMeta?.sourceFile,
             folder,
             argsFile,
           ),
