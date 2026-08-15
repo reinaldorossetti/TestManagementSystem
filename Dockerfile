@@ -50,6 +50,10 @@ RUN npm ci
 # Copy application source code
 COPY . .
 
+# Set environment variables for build steps
+ENV DATABASE_URL="file:./prisma/dev.db"
+ENV NEXT_TELEMETRY_DISABLED=1
+
 # Generate Prisma Client
 RUN npx prisma generate
 
@@ -57,14 +61,12 @@ RUN npx prisma generate
 RUN rfbrowser init || true
 
 # Build Next.js application
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Set environment defaults for container execution
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="file:./prisma/dev.db"
 
 EXPOSE 3000
 
