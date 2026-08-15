@@ -205,7 +205,7 @@ export function useTerminalRunner({
       const { resolvedTag, workingFolder, command: baseCommand } =
         resolveTagAndFolderForFeatureExecution(tagOverride);
 
-      const command = withRobotOutputDirectory(baseCommand, robotResultsDirectory, runFolder);
+      const command = withRobotOutputDirectory(baseCommand, robotResultsDirectory);
 
       appendTerminalLog('==============================================================================', 'header');
       appendTerminalLog(`[EXEC] Iniciando suíte de testes Robot Framework (-i ${resolvedTag})...`, 'cmd');
