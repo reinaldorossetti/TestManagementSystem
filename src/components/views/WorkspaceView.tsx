@@ -94,6 +94,8 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   setSelectedScenarioId,
   t,
 }) => {
+  const [workspaceTab, setWorkspaceTab] = React.useState<'scenarios' | 'raw'>('scenarios');
+
   return (
     <div className="w-full lg:w-[420px] bg-slate-900 border-r border-slate-800 flex flex-col p-5 overflow-y-auto shrink-0 gap-5">
       
@@ -205,7 +207,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           </div>
         )}
 
-        <div className="flex justify-between items-center pb-2 border-b border-slate-800/60 relative z-10">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800/60 relative z-10 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <FileCode className="w-4 h-4 text-emerald-400" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
@@ -270,6 +272,34 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           )}
         </div>
 
+        {/* View Mode Toggle Tabs */}
+        {!isEditingGherkin && (
+          <div className="flex border-b border-slate-800/80 text-[10px] font-mono gap-1 pb-1.5">
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('scenarios')}
+              className={`px-2.5 py-1 rounded font-bold transition-all ${
+                workspaceTab === 'scenarios'
+                  ? 'bg-[#FF6600]/15 text-[#FF6600] border border-[#FF6600]/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t(`Cenários (${parsedFeature.scenarios.length})`, `Scenarios (${parsedFeature.scenarios.length})`)}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('raw')}
+              className={`px-2.5 py-1 rounded font-bold transition-all ${
+                workspaceTab === 'raw'
+                  ? 'bg-[#FF6600]/15 text-[#FF6600] border border-[#FF6600]/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t("Código Fonte", "Raw Source")}
+            </button>
+          </div>
+        )}
+
         {isEditingGherkin ? (
           <textarea
             value={gherkinTempText}
@@ -277,6 +307,97 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             data-testid="terminal-gherkin-editor"
             className="w-full flex-1 bg-slate-900 border border-slate-700 rounded-lg p-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-[#FF6600] resize-none leading-relaxed"
           />
+        ) : workspaceTab === 'scenarios' ? (
+          <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 scrollbar-thin">
+            {parsedFeature.scenarios.map((sc) => {
+              const status = scenarioStatuses[sc.id] || 'Not executed';
+              const primaryTag = sc.tags[0] ? sc.tags[0].replace(/^@/, '') : sc.id;
+
+              let statusLabel = t("Não Iniciado", "Not Started");
+              let statusClasses = "bg-slate-800 text-slate-400 border-slate-700/60";
+              let dotColor = "bg-slate-500";
+
+              if (status === 'PASS' || status === 'Passed') {
+                statusLabel = t("Aprovado", "Passed");
+                statusClasses = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+                dotColor = "bg-emerald-400";
+              } else if (status === 'FAIL' || status === 'Failed') {
+                statusLabel = t("Falhou", "Failed");
+                statusClasses = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+                dotColor = "bg-rose-400";
+              } else if (status === 'SKIP' || status === 'Skipped') {
+                statusLabel = t("Ignorado", "Skipped");
+                statusClasses = "bg-amber-500/15 text-amber-400 border-amber-500/20";
+                dotColor = "bg-amber-400";
+              }
+
+              return (
+                <div
+                  key={sc.id}
+                  onClick={() => setSelectedScenarioId(sc.id)}
+                  data-testid={`terminal-scenario-card-${sc.id}`}
+                  className={`bg-slate-900 border rounded-xl p-3.5 flex flex-col gap-2.5 transition-all cursor-pointer ${
+                    selectedScenarioId === sc.id ? 'border-[#FF6600] ring-1 ring-[#FF6600]/30' : 'border-slate-800/80 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {sc.tags.map((tag) => (
+                        <span key={tag} className="px-2 py-0.5 rounded bg-slate-950 text-[#FF6600] font-mono text-[10px] font-bold border border-slate-800">
+                          {tag.startsWith('@') ? tag : `@${tag}`}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold font-mono ${statusClasses}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                      <span>{statusLabel}</span>
+                    </div>
+                  </div>
+
+                  <h4 className="font-bold text-xs text-slate-100 leading-snug">
+                    {sc.title}
+                  </h4>
+
+                  <div className="flex flex-col gap-1 text-[11px] font-mono bg-slate-950/60 border border-slate-850 p-2.5 rounded-lg">
+                    {sc.steps.map((st, sIdx) => {
+                      let typeBadgeColor = "text-slate-400 bg-slate-850";
+                      if (st.type === 'GIVEN') typeBadgeColor = "text-sky-300 bg-sky-950/60 border border-sky-800/40";
+                      else if (st.type === 'WHEN') typeBadgeColor = "text-amber-300 bg-amber-950/60 border border-amber-800/40";
+                      else if (st.type === 'THEN') typeBadgeColor = "text-rose-300 bg-rose-950/60 border border-rose-800/40";
+
+                      return (
+                        <div key={sIdx} className="flex items-start gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${typeBadgeColor}`}>
+                            {st.type}
+                          </span>
+                          <span className="text-slate-300 leading-tight">
+                            <span className="font-bold text-slate-400 mr-1">{st.rawType}</span>
+                            {st.text}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRunFeatureReal(primaryTag);
+                      }}
+                      data-testid={`workspace-run-scenario-${sc.id}`}
+                      className="text-[10px] bg-slate-950 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500 px-2.5 py-1 rounded-md font-mono transition-all flex items-center gap-1 font-bold"
+                    >
+                      <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      {t("Execução", "Run")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-3 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap select-text scrollbar-thin">
             {gherkinContent}
