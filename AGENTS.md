@@ -389,3 +389,56 @@ Implementação: `src/utils/pdfExporter.ts`. Referência de qualidade: `results/
 - Script: `scripts/test-full-flow-pdf.mjs` — limpa DB, executa `login_tests`, persiste, clica **PDF** em `/reports`, valida tamanho > 300 KB e chamadas à API de screenshot.
 - E2E: `e2e/reports-pdf.spec.ts` — fluxo similar com Playwright.
 
+---
+
+## 🐳 Infraestrutura de Containerização Docker Local
+
+O projeto conta com suporte nativo e otimizado a containerização local via **Docker** e **Docker Compose**:
+
+1. **Dockerfile Multi-Ambiente (`Dockerfile`)**:
+   - Imagem base baseada em `node:20-bookworm` com suporte completo a Node.js 20, Python 3, `pip`, e dependências do SO (Xvfb, gsettings, libnss3, libatk) para execução nativa do Playwright e Robot Framework Browser.
+   - Instalação dos pacotes de automação Python: `robotframework`, `robotframework-browser`, `robotframework-requests` e `rfbrowser init`.
+   - Cópia antecipada do schema do Prisma (`prisma/schema.prisma`) garantindo a execução transparente do `npx prisma generate` durante o `npm ci`.
+   - Sincronização automática do schema no boot (`npx prisma db push --accept-data-loss`) antes de subir o servidor de produção Next.js.
+
+2. **Docker Compose (`docker-compose.yml`)**:
+   - Serviço `tms-app` mapeado na porta `3000:3000`.
+   - Volumes persistentes:
+     - `./prisma`: Preserva o arquivo SQLite `dev.db`.
+     - `./results`: Preserva artefatos e relatórios `output.xml`, `report.html`, `log.html`.
+     - `./test_projects`: Permite edição e execução ao vivo de suítes `.robot`.
+
+3. **Endpoints & Acesso à Aplicação**:
+   - **URL Host Local:** `http://localhost:3000` ou `http://127.0.0.1:3000`
+   - **IP Container Bind:** `http://0.0.0.0:3000` (acessível pelo IP da máquina hospedeira)
+   - **Porta Mapeada:** `3000`
+
+---
+
+## 🏗️ Refatoração de Arquitetura Modular (`src/App.tsx`)
+
+O antigo monolito **`src/App.tsx`** (~6.500 linhas) foi desmembrado em uma arquitetura modular limpa, testável e desacoplada:
+
+1. **Constantes e Especificações (`src/constants/initialSpecs.ts`)**:
+   - Centraliza o conteúdo Gherkin padrão (`INITIAL_GHERKIN_CONTENT`), formatadores de IDs, sanitizadores de títulos e geradores de templates SQL / Robot Script.
+
+2. **Camada de Lógica & Hooks Customizados (`src/hooks/`)**:
+   - `useTestSpecs.ts`: Gerenciamento de arquivos Gherkin/Robot, parsing de cenários, upload e decodificação multibyte segura.
+   - `useTerminalRunner.ts`: Orquestração de execuções do Robot Framework (singulares e plurais), streaming de logs do console e persistência relacional no SQLite.
+   - `useSphereTestCases.ts`: Estado do Sistema de Gestão de Testes (TMS), árvore de pastas, pesquisas, documentos de aceite e diálogos de execução manual.
+
+3. **Layout e Componentes de Visão (`src/components/`)**:
+   - `Header.tsx`: Cabeçalho superior, indicador único de status do banco (`DB: CONECTADO`), comutador de idiomas (PT/EN) e gatilhos de modais.
+   - `LoggedStep.tsx`: Componente de formatação e realce de sintaxe dos passos BDD Gherkin no console.
+   - `WorkspaceView.tsx`: Editor de especificações Gherkin e seletores de CLI.
+   - `TerminalView.tsx`: Painel interativo com console streaming via xterm.js e métricas de execução ao vivo.
+   - `SqlExplorerView.tsx`: Explorador visual de tabelas SQLite e Console RAW SQL interativo.
+
+4. **Diálogos e Modais (`src/components/modals/`)**:
+   - `ConfigureTagModal.tsx`: Gestão de tags de execução (`-i`).
+   - `SettingsModal.tsx`: Configurações de diretórios de saída do Robot e reset do banco relacional.
+
+5. **Container Raiz Reestruturado (`src/App.tsx`)**:
+   - Reduzido para ~250 linhas, atuando como container limpo responsável exclusivamente pelo roteamento de abas, sincronização global e renderização das visões.
+
+

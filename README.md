@@ -162,6 +162,29 @@ banco vazio e não substitui registros existentes. Para restaurar
 intencionalmente o estado inicial, use `npm run db:reset` ou a ação explícita
 de reset nas configurações da aplicação.
 
+### 🐳 Modo Docker (Containerizado)
+Você pode executar todo o sistema (Next.js, Prisma SQLite e ferramentas do Robot Framework) via Docker:
+
+```bash
+# Construir a imagem e subir os containers
+docker compose up -d --build
+
+# Ou utilizando os scripts npm:
+npm run docker:build
+npm run docker:up
+```
+
+#### 🌐 IP e Porta de Acesso à Aplicação:
+- **URL Local / Host:** `http://localhost:3000` ou `http://127.0.0.1:3000`
+- **Endereço IP (Rede Local / Bind Container):** `http://0.0.0.0:3000` (acessível no IP da máquina na porta `3000`)
+- **Porta:** `3000` (mapeada `3000:3000` no Docker Compose)
+
+Para parar os containers:
+```bash
+docker compose down
+# ou: npm run docker:down
+```
+
 ### Inspecionar o banco de dados (Prisma Studio)
 ```bash
 npm run db:studio

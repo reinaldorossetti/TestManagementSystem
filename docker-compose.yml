@@ -1,0 +1,21 @@
+services:
+  tms-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tms_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=file:./prisma/dev.db
+    volumes:
+      # Persist SQLite database file across container restarts
+      - ./prisma:/app/prisma
+      # Persist test execution results and reports
+      - ./results:/app/results
+      # Mount local test features & robot suites for live execution
+      - ./test_projects:/app/test_projects

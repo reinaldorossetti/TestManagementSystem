@@ -18,6 +18,10 @@
     "db:reset": "prisma migrate reset --force",
     "db:backup-and-clear": "tsx scripts/backup-and-clear-db.ts",
     "db:studio": "prisma studio",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
     "postinstall": "prisma generate"
   },
   "dependencies": {
