@@ -199,9 +199,8 @@ export function useTerminalRunner({
       setTerminalLogs([]);
       setRobotExecutionProgress(INITIAL_ROBOT_EXECUTION_PROGRESS);
 
-      const runDate = new Date();
-      const runTimestampStr = formatRobotRunTimestamp(runDate);
-      const runFolder = createRunFolderForTimestamp(runDate);
+      const runTimestampStr = formatRobotRunTimestamp();
+      const runFolder = createRunFolderForTimestamp(runTimestampStr);
 
       const { resolvedTag, workingFolder, command: baseCommand } =
         resolveTagAndFolderForFeatureExecution(tagOverride);
@@ -216,43 +215,48 @@ export function useTerminalRunner({
       const fullOutputRef = { current: '' };
 
       try {
-        await runRobotCommandStreaming({
+        await runRobotCommandStreaming(
           command,
-          workingDirectory: workingFolder,
-          onLine: (line) => {
+          runFolder,
+          (line) => {
             fullOutputRef.current += `${line}\n`;
             appendTerminalLog(line);
           },
-        });
+          undefined,
+          workingFolder,
+        );
 
         appendTerminalLog('==============================================================================', 'header');
         appendTerminalLog('[EXEC] Processo Robot concluído. Gravando relatórios e SQLite...', 'success');
 
-        const { execution, testCases, steps } = await persistRobotRunOutput({
-          outputXmlFolder: runFolder,
+        const result = await persistRobotRunOutput(
+          runFolder,
           command,
-          timestampStr: runTimestampStr,
-        });
-
-        setSqliteDb((prev) => ({
-          ...prev,
-          executions: [execution, ...prev.executions],
-          test_cases: [...testCases, ...prev.test_cases],
-          steps: [...steps, ...prev.steps],
-        }));
-
-        setRobotExecutionProgress((current) => ({
-          ...current,
-          total: current.total || execution.total_tests || testCases.length,
-          passed: current.passed || execution.passed,
-          failed: current.failed || execution.failed,
-          isFinal: true,
-        }));
-
-        appendTerminalLog(
-          `[SQLITE] Execução ${execution.id} persistida: ${execution.passed} PASS, ${execution.failed} FAIL.`,
-          'success',
+          runTimestampStr,
         );
+
+        if (result.ok) {
+          const { execution, testCases, steps } = result.data;
+          setSqliteDb((prev) => ({
+            ...prev,
+            executions: [execution, ...prev.executions],
+            test_cases: [...testCases, ...prev.test_cases],
+            steps: [...steps, ...prev.steps],
+          }));
+
+          setRobotExecutionProgress((current) => ({
+            ...current,
+            total: current.total || execution.total_tests || testCases.length,
+            passed: current.passed || execution.passed,
+            failed: current.failed || execution.failed,
+            isFinal: true,
+          }));
+
+          appendTerminalLog(
+            `[SQLITE] Execução ${execution.id} persistida: ${execution.passed} PASS, ${execution.failed} FAIL.`,
+            'success',
+          );
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         appendTerminalLog(`[ERROR] Falha na execução Robot: ${message}`, 'error');
