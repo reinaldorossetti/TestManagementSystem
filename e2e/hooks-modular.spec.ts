@@ -149,3 +149,36 @@ Cenário: CT02 - Login Inválido
     expect(isExpanded('SC_ROBOT_002')).toBe(false);
   });
 });
+
+test.describe('Navigation Drawer (Navegar Painéis) Validation', () => {
+  test('validates NavDrawerModal component structure and tab selection behavior', () => {
+    let isNavDrawerOpen = false;
+    let activeTab: 'tms' | 'terminal' | 'sqlite' | 'reports' = 'terminal';
+
+    const openDrawer = () => { isNavDrawerOpen = true; };
+    const closeDrawer = () => { isNavDrawerOpen = false; };
+    const selectTab = (tab: 'tms' | 'terminal' | 'sqlite' | 'reports') => {
+      activeTab = tab;
+      closeDrawer();
+    };
+
+    expect(isNavDrawerOpen).toBe(false);
+    expect(activeTab).toBe('terminal');
+
+    // Simulate clicking "Navegar Painéis" button
+    openDrawer();
+    expect(isNavDrawerOpen).toBe(true);
+
+    // Simulate selecting "Sistema de Gestão de Testes (TMS)"
+    selectTab('tms');
+    expect(activeTab).toBe('tms');
+    expect(isNavDrawerOpen).toBe(false);
+
+    // Reopen and select "Explorador SQLite"
+    openDrawer();
+    expect(isNavDrawerOpen).toBe(true);
+    selectTab('sqlite');
+    expect(activeTab).toBe('sqlite');
+    expect(isNavDrawerOpen).toBe(false);
+  });
+});

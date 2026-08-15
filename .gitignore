@@ -9,6 +9,10 @@ coverage/
 *.log
 .env*
 !.env.example
+playwright-log.txt
+report.html
+output.xml
+log.html
 
 # Next.js
 /.next/

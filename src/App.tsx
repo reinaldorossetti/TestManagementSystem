@@ -45,6 +45,7 @@ import { TmsView } from './components/views/TmsView';
 import { ExecutionReports } from './components/ExecutionReports';
 import { ConfigureTagModal } from './components/modals/ConfigureTagModal';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { NavDrawerModal } from './components/modals/NavDrawerModal';
 import { LiveTerminal } from './components/LiveTerminal';
 import { LoggedStep } from './components/LoggedStep';
 import { ManualExecutionDialog } from './components/ManualExecutionDialog';
@@ -662,6 +663,15 @@ export default function App({ initialTab }: AppProps = {}) {
         onSaveRobotResultsDirectory={handleSaveRobotResultsDirectory}
         isSavingRobotResultsDirectory={isSavingRobotResultsDirectory}
         onResetDatabase={handleResetDatabase}
+        t={t}
+      />
+
+      {/* Navigation Drawer Modal (Navegar Painéis) */}
+      <NavDrawerModal
+        isOpen={isNavDrawerOpen}
+        onClose={() => setIsNavDrawerOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
         t={t}
       />
     </div>
