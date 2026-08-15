@@ -20,7 +20,8 @@ import {
   Layers,
   Terminal,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  ArrowLeft
 } from 'lucide-react';
 import type { DbTestCaseSphere, VirtualDatabase } from '../../utils/sqliteEngine';
 import { SphereCaseStatusBadge } from '../SphereCaseStatusBadge';
@@ -212,6 +213,20 @@ export const TmsView: React.FC<TmsViewProps> = ({
       {/* Top Header / Action Toolbar */}
       <div className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/terminal';
+              }
+            }}
+            className="bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-slate-800 hover:border-sky-500 flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title={t("Voltar ao Terminal Console", "Return to Terminal Console")}
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+            {t("Voltar", "Back")}
+          </button>
+          <div className="h-6 w-px bg-slate-800 hidden sm:block"></div>
           <Layers className="w-5 h-5 text-[#FF6600]" />
           <div>
             <h2 className="font-bold text-sm text-slate-100 uppercase tracking-wider">

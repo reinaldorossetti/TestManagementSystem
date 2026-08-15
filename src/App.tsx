@@ -431,48 +431,50 @@ export default function App({ initialTab }: AppProps = {}) {
         t={t}
       />
 
-      {/* Stats Summary Bar */}
-      <section className="bg-slate-900 border-b border-slate-800 px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#FF6600]/10 text-[#FF6600] border border-[#FF6600]/20 flex items-center justify-center">
-            <PlayCircle className="w-6 h-6" />
+      {/* Stats Summary Bar (Terminal View only) */}
+      {activeTab === 'terminal' && (
+        <section className="bg-slate-900 border-b border-slate-800 px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-[#FF6600]/10 text-[#FF6600] border border-[#FF6600]/20 flex items-center justify-center">
+              <PlayCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Total de Execuções", "Total Executions")}</p>
+              <p className="text-lg font-black text-white font-mono">{stats.totalExecutions} {t("Históricos", "History logs")}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Total de Execuções", "Total Executions")}</p>
-            <p className="text-lg font-black text-white font-mono">{stats.totalExecutions} {t("Históricos", "History logs")}</p>
-          </div>
-        </div>
 
-        <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6" />
+          <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Taxa de Sucesso (Pass)", "Success Rate (Pass)")}</p>
+              <p className="text-lg font-black text-emerald-400 font-mono">{stats.totalPassRate}% {t("de Êxito", "Success")}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Taxa de Sucesso (Pass)", "Success Rate (Pass)")}</p>
-            <p className="text-lg font-black text-emerald-400 font-mono">{stats.totalPassRate}% {t("de Êxito", "Success")}</p>
-          </div>
-        </div>
 
-        <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
-            <Clock className="w-6 h-6" />
+          <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Duração Média das Suites", "Average Suite Duration")}</p>
+              <p className="text-lg font-black text-white font-mono">{stats.averageDuration} s</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("Duração Média das Suites", "Average Suite Duration")}</p>
-            <p className="text-lg font-black text-white font-mono">{stats.averageDuration} s</p>
-          </div>
-        </div>
 
-        <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#FF6600]/10 text-slate-300 border border-slate-700/60 flex items-center justify-center">
-            <Database className="w-6 h-6" />
+          <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-[#FF6600]/10 text-slate-300 border border-slate-700/60 flex items-center justify-center">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("SQLite Estabilidade", "SQLite Stability")}</p>
+              <p className="text-lg font-black text-[#FF6600] font-mono">{stats.totalStepsRow} {t("Linhas Ativas", "Active Rows")}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">{t("SQLite Estabilidade", "SQLite Stability")}</p>
-            <p className="text-lg font-black text-[#FF6600] font-mono">{stats.totalStepsRow} {t("Linhas Ativas", "Active Rows")}</p>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Main Content View */}
       <main className="flex-1 flex flex-col lg:flex-row min-h-0 h-full">
