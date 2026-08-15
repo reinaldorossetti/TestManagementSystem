@@ -305,12 +305,23 @@ TestManagementSystem/
 - **API REST** completa para banco, execuções, specs, casos de teste, pastas e SQL.
 - **Sincronização multi-abas** em tempo real via `BroadcastChannel`.
 - **Suporte bilíngue PT-BR / EN-US** centralizado em `src/utils/i18n.ts`.
-- **TMS Standalone**: gestão de casos de teste (árvore de pastas/features, filtro, detalhe com Visão Geral/Auditoria/Scripts, criar/editar/excluir/executar).
-- **Importar Testes no TMS**: ação única que seleciona `.feature`, `.txt` ou `.robot`, importa os cenários e os salva diretamente na pasta/feature vinculada ao projeto ativo, sem abrir uma nova aba.
-- **Separação dos fluxos de importação**: o botão TMS `Importar Testes` possui input e handlers próprios; os fluxos legados do Terminal `Importar File` e `Armazenar Testes` permanecem independentes e inalterados.
-- **Menu de Configuração**: sincronização multi-abas e reset seguro do banco.
+- **TMS Standalone (`/tms`)**: gestão completa de casos de teste em layout autônomo de 3 painéis em modo claro (`bg-slate-50`, `bg-white`).
+- **Gestão de Projetos Ativos (`Active Project`)**: seletor de projeto com modal inline para criar (`+`) e renomear/editar (`Edit`) projetos (Nome, Detalhes e Plataforma Web/Mobile/Desktop) com vínculo automático às pastas.
+- **Importar Testes no TMS**: ação direta que lê arquivos `.feature`, `.txt` ou `.robot`, extrai os cenários e os persiste no banco relacional SQLite associados à pasta da feature e ao projeto ativo.
+- **Critérios de Aceite (`Acceptance Criteria .md`)**: upload de documentos `.md` por pasta de teste com link dinâmico e atalho de navegação em nova aba na Visão Geral do teste.
+- **4 Sub-abas no Detalhe do Teste**:
+  - **Visão Geral**: pré-condições, passos Gherkin coloridos por keyword, resultado esperado, observações e documento de aceite.
+  - **Evidências**: anexos de imagens, vídeos e links externos por caso de teste.
+  - **Log de Auditoria**: histórico temporal completo de edições e atualizações (`history`).
+  - **Scripts**: editores dedicados para **SQL Query** (com templates DML/DQL) e **Script Language** (com templates Robot Framework em Python).
+- **Diferenciação Estrita de Execução (Singular vs. Plural)**:
+  - **"Executar Teste Automatizado" (SINGULAR)**: executa estritamente o cenário selecionado via tag Robot unitária (`--include`).
+  - **"Executar Testes" (PLURAL)**: executa a suíte/pasta inteira selecionada.
+- **Exportação Integrada**: botões para exportação comercial em **Excel (.xlsx)** multi-abas e **PDF** do Plano de Testes.
+- **Edição em Lote de Observações**: checkbox *"Aplicar para todos os testes."* para propagar observações para toda a pasta.
+- **Menu de Configuração & Drawer de Navegação**: alternância rápida entre painéis e reset seguro do banco.
 - **CI no GitHub Actions**: o workflow `.github/workflows/ci.yml` prepara um SQLite isolado, executa typecheck, build e a suíte Playwright, publicando relatórios e evidências de falha.
-- **Testes E2E (Playwright)** cobrindo todos os painéis (ver seção abaixo).
+- **Testes E2E (Playwright)** cobrindo todos os painéis.
 
 ---
 
@@ -546,6 +557,59 @@ Para preservar as regras de negócios mesmo em edições externas feitas pelo us
   - **Criticidade**: `Critical`, `High`, `Medium`, `Low`.
   - **Teste Automatizado?**: `Sim`, `Não`.
 * Isso previne digitações equivocadas e mantém a padronização e consistência da massa de dados em todo o ecossistema corporativo.
+
+---
+
+## 📂 Módulos e Recursos do Sistema de Gestão de Testes (TMS)
+
+O módulo **TMS Standalone** (acessível via `/tms` ou pelo drawer de navegação) foi desenhado com foco em produtividade para times de QA, analistas de negócios e desenvolvedores. O layout segue o padrão de 3 painéis em modo claro (`bg-slate-50`, `bg-white`, `border-slate-200`):
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ [PAINEL 1: PROJETOS E PASTAS] │ [PAINEL 2: CASOS DE TESTE] │ [PAINEL 3: DETALHE DO CASO]│
+│ • Projeto Ativo (Dropdown)   │ • Busca & Filtros          │ • Sub-aba: Visão Geral     │
+│   [+] Criar  [Edit] Renomear │ • [Importar Aceite .md]   │ • Sub-aba: Evidências      │
+│ • Árvore de Pastas/Features  │ • Lista de Casos          │ • Sub-aba: Log Auditoria   │
+│   [New] [Edit] [Delete]      │   - Badge do Caso (ex: RCT01)│ • Sub-aba: Scripts (SQL/RF)│
+│   [Excel] [PDF]              │   - Título e Pasta          │ • Botões de Ação:          │
+│ • [Importar Testes]          │ • [+ Criar Caso de Teste]  │   - Excluir                │
+│                              │ • [▶ Executar Testes]      │   - Editar                 │
+│                              │   (PLURAL = todos da pasta)│   - Executar Manualmente   │
+│                              │                            │   - Executar Automatizado  │
+│                              │                            │     (SINGULAR = só o caso) │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Painel 1: Gestão de Projetos e Estrutura de Pastas
+- **Projeto Ativo (`sqliteDb.projects`)**: Permite selecionar o projeto corrente ou cadastrar novos via modal inline (`+`), configurando Nome, Detalhes e Plataforma (Web, Mobile, Desktop). O botão `Edit` permite atualizar os metadados do projeto selecionado.
+- **Vínculo Projeto-Pasta (`sqliteDb.folder_projects`)**: Ao importar testes no TMS, a pasta/feature criada é automaticamente vinculada ao projeto ativo selecionado, exibindo a badge com o nome do projeto logo abaixo do nome da pasta.
+- **Gestão de Pastas**: Ações de inclusão (`New`), alteração do caminho (`Edit`) e remoção completa da pasta com todos os seus casos (`Delete`).
+- **Exportação Rápida**: Botões `Excel` (exportação analítica multi-abas) e `PDF` (Plano de Testes impresso).
+- **Importar Testes**: Seleciona um arquivo de teste (`.feature`, `.txt`, `.robot`), realiza o parse dinâmico dos cenários e insere todos no banco SQLite associados ao projeto ativo.
+
+### 2. Painel 2: Portfólio e Seleção de Casos de Teste
+- **Filtro de Pesquisa Inteligente**: Filtra casos de teste em tempo real pelo ID ou palavras contidas no título e pré-condições.
+- **Importar Critérios de Aceite**: Permite anexar um documento `.md` por pasta de teste, persistido em `sqliteDb.folder_acceptance_docs`.
+- **Cartões de Cenário**: Exibem o badge normalizado do teste (ex: `RCT01`, `TC-01`), título limpo e nome da pasta.
+- **Botão "Executar Testes" (PLURAL)**: Executa todos os testes pertencentes à pasta/feature selecionada no Terminal Robot.
+
+### 3. Painel 3: Detalhes, Análise e Execução do Teste
+- **Sub-aba Visão Geral**:
+  - Exibe o status atual do teste (*Não Iniciado*, *PASS*, *FAIL*, *SKIP*).
+  - Link direto com ícone para os **Critérios de Aceite (.md)** associados.
+  - Passo a passo Gherkin formatado com destaque visual de palavras-chave (`Dado Que` em azul, `Quando` em amarelo, `Então` em verde).
+  - Caixa de Resultado Esperado e Observações operacionais.
+- **Sub-aba Evidências (`TestCaseEvidenceTab`)**:
+  - Suporte a upload de arquivos locais (screenshots, gravações em vídeo) ou links dinâmicos HTTP/HTTPS com título personalizado.
+- **Sub-aba Log de Auditoria**:
+  - Histórico cronológico completo em linha do tempo (`history`) com autor da mudança, ação realizada e data/hora.
+- **Sub-aba Scripts**:
+  - Editor para **SQL Query** pré-carregado com templates de auditoria SQLite (`INSERT`, `UPDATE`, `SELECT` na tabela `executions`/`test_cases`).
+  - Editor para **Script Language** pré-carregado com modelo executável de suíte Robot Framework utilizando Selenium/Playwright.
+
+### 4. Execução Singular vs. Plural no TMS
+- **Singular ("Executar Teste Automatizado")**: Localizado no rodapé do painel de detalhes. Executa **apenas o caso aberto**, compilando `python -m robot --include <tag_do_caso> test_projects/<pasta_do_projeto>/`.
+- **Plural ("Executar Testes")**: Localizado no rodapé da lista do meio. Executa **todos os testes da pasta/feature** filtrada.
 
 ---
 
