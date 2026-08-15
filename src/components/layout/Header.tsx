@@ -34,9 +34,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-extrabold text-lg tracking-tight text-white font-sans">TMS - QA Execution Center</h1>
-            <span className="text-[10px] bg-[#FF6600]/20 text-[#FF6600] border border-[#FF6600]/30 px-1.5 py-0.5 rounded-full font-mono font-bold uppercase">
-              Robot v6.1.1
-            </span>
           </div>
           <p className="text-xs text-slate-400 font-mono">
             {t("Dashboard de Execução de Testes Automatizados Online com base na especificação do Sistema em ATDD.", "Online Automated Test Execution Dashboard based on the System Specification in ATDD.")}
