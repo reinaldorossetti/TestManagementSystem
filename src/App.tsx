@@ -305,7 +305,7 @@ export default function App({ initialTab }: AppProps = {}) {
       folder: defaultFolder,
       title: sc.title,
       preconditions: sc.tags.length > 0 ? `Tags: ${sc.tags.join(', ')}` : '',
-      steps: sc.steps.map(s => `${s.keyword} ${s.text}`).join('\n'),
+      steps: sc.steps.map(s => `${s.rawType || s.type} ${s.text}`).join('\n'),
       expected_result: 'Cenário executado com sucesso.',
       created_at: new Date().toISOString(),
     }));
