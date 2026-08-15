@@ -83,7 +83,7 @@ export function useTestSpecs({
       appendTerminalLog(`==============================================================================`, 'header');
       appendTerminalLog(`[IMPORT] Arquivo "${filename}" carregado com sucesso via upload!`, 'success');
       appendTerminalLog(`==============================================================================`, 'header');
-      appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste identificados com sucesso.`, 'info');
+      appendTerminalLog(`[PARSER] ${parsed.scenarios.length} cenários de teste identificados com sucesso.`, 'success');
 
       if (filename.toLowerCase().endsWith('.robot')) {
         const suiteExecutionTags = new Set(extractSuiteExecutionTags(text));
