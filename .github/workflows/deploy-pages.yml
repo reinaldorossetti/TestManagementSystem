@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
+
 jobs:
   deploy:
     name: Build & Deploy Site to GitHub Pages

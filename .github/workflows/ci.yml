@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 30
 
     env:
+      FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
       DATABASE_URL: "file:./prisma/ci.db"
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: 1
