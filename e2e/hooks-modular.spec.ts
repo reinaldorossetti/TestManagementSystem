@@ -182,17 +182,17 @@ test.describe('Navigation Drawer (Navegar Painéis) Validation', () => {
     expect(isNavDrawerOpen).toBe(false);
   });
 
-  test('validates selecting Sistema de Gestão de Testes (TMS) redirects to /tms', () => {
-    let redirectedUrl = '';
-    const mockWindowAssign = (url: string) => {
-      redirectedUrl = url;
+  test('validates selecting Sistema de Gestão de Testes (TMS) navigates client-side to /tms', () => {
+    let pushedUrl = '';
+    const mockPushState = (_state: any, _title: string, url: string) => {
+      pushedUrl = url;
     };
 
     const handlePanelClick = (panelId: 'tms' | 'terminal' | 'sqlite' | 'reports') => {
-      mockWindowAssign(`/${panelId}`);
+      mockPushState({}, '', `/${panelId}`);
     };
 
     handlePanelClick('tms');
-    expect(redirectedUrl).toBe('/tms');
+    expect(pushedUrl).toBe('/tms');
   });
 });

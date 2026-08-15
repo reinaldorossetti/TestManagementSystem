@@ -126,7 +126,10 @@ export const NavDrawerModal: React.FC<NavDrawerModalProps> = ({
                   setActiveTab(panel.id);
                   onClose();
                   if (typeof window !== 'undefined') {
-                    window.location.assign(`/${panel.id}`);
+                    const targetUrl = `/${panel.id}`;
+                    if (window.location.pathname !== targetUrl) {
+                      window.history.pushState({}, '', targetUrl);
+                    }
                   }
                 }}
                 data-testid={`nav-panel-item-${panel.id}`}
