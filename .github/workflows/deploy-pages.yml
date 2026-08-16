@@ -58,6 +58,7 @@ jobs:
           cp .next/server/app/*.html out-gh-pages/ 2>/dev/null || true
           mkdir -p out-gh-pages/_next
           cp -r .next/static out-gh-pages/_next/
+          sed -i 's|/_next/|./_next/|g' out-gh-pages/*.html 2>/dev/null || true
           touch out-gh-pages/.nojekyll
 
       - name: Upload GitHub Pages Artifact
