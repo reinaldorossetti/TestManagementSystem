@@ -51,6 +51,42 @@ O ecossistema é projetado para engenheiros de QA que operam fluxos de pagamento
 
 ---
 
+## 📸 Funcionalidades do Sistema
+
+Abaixo estão apresentados os principais módulos e funcionalidades do **Centro de Execução QA TMS**:
+
+### 1. 📂 Sistema de Gestão de Testes (TMS Standalone)
+Painel completo de gerenciamento de casos de teste no estilo Jira / TestRail, com navegação estruturada em 3 painéis (Projetos/Pastas, Lista de Casos e Visão Detalhada de Critérios de Aceite).
+- **Recursos**: Exportação corporativa avançada para **Excel (.xlsx)** e **PDF**, anexos de evidências, logs de auditoria e execuções manuais ou automatizadas individuais.
+
+![TMS Standalone - Gestão de Casos de Teste](docs/images/tms_standalone.png)
+
+---
+
+### 2. ⚡ Console Terminal de Execução Real (Robot Framework)
+Dashboard online para execução e monitoria em tempo real de suítes do Robot Framework com sintaxe BDD Gherkin.
+- **Recursos**: Execução local real com streaming de stdout (xterm.js), cartões de cenários com visualização expansível dos passos BDD, filtros de execução por tag (`-i`) e indicador de status do banco.
+
+![Terminal de Execução Real - Robot Framework](docs/images/terminal_console.png)
+
+---
+
+### 3. 📊 Relatórios de Execução (Estilo Allure)
+Painel consolidado com métricas visuais executivas e relatórios no estilo Allure Report.
+- **Recursos**: Gráficos circulares de taxa de sucesso (PASS/FAIL), contagem por severidade/categoria, histórico de suítes e filtro rápido por status.
+
+![Relatórios de Execução Estilo Allure](docs/images/reports_allure.png)
+
+---
+
+### 4. 🗄️ Navegador e Console Relacional SQLite
+Explorador visual interativo das tabelas relacionais (`executions`, `test_cases` e `steps`) persistidas via Prisma 7.
+- **Recursos**: Inspeção direta de dados, busca rápida em tempo real e **Console SQL RAW** integrado para execução de consultas customizadas.
+
+![Navegador e Console SQL Relacional](docs/images/sqlite_browser.png)
+
+---
+
 ## 🧰 Stack Tecnológico
 
 | Camada | Tecnologia | Versão |
