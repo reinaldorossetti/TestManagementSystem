@@ -51,10 +51,19 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
         run: npm run build
 
+      - name: Prepare GitHub Pages Distribution Folder
+        run: |
+          mkdir -p out-gh-pages
+          cp -r public/* out-gh-pages/ 2>/dev/null || true
+          cp .next/server/app/*.html out-gh-pages/ 2>/dev/null || true
+          mkdir -p out-gh-pages/_next
+          cp -r .next/static out-gh-pages/_next/
+          touch out-gh-pages/.nojekyll
+
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './public'
+          path: './out-gh-pages'
 
       - name: Deploy to GitHub Pages
         id: deployment
