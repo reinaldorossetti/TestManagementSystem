@@ -49,7 +49,7 @@ jobs:
         env:
           DATABASE_URL: "file:./prisma/dev.db"
           NEXT_TELEMETRY_DISABLED: 1
-          BUILD_TARGET: "static"
+          IS_GITHUB_PAGES: "true"
         run: npm run build
 
       - name: Prepare GitHub Pages Distribution Folder
