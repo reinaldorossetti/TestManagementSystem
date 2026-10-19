@@ -194,3 +194,77 @@ model TestCaseEvidence {
   @@index([testCaseId])
   @@map("test_case_evidence")
 }
+
+/// Configurações de tempo de execução do Robot Framework.
+model RobotRuntimeSettings {
+  id        Int    @id @default(1)
+  outputDir String @map("output_dir")
+
+  @@map("robot_runtime_settings")
+}
+
+/// Representa os usuários da plataforma TMS com RBAC (admin, analyst, tester).
+model User {
+  id             String             @id @default(cuid())
+  email          String             @unique
+  passwordHash   String             @map("password_hash")
+  name           String
+  role           String             @default("tester") // admin, analyst, tester
+  status         String             @default("ACTIVE") // ACTIVE, BLOCKED, PENDING
+  failedAttempts Int                @default(0) @map("failed_attempts")
+  lockedAt       DateTime?          @map("locked_at")
+  lastLoginAt    DateTime?          @map("last_login_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  sessions       Session[]
+  passwordHistories PasswordHistory[]
+  auditLogs      SecurityAuditLog[]
+
+  @@map("users")
+}
+
+/// Sessões ativas autenticadas com tokens de alta entropia.
+model Session {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  tokenHash  String   @unique @map("token_hash")
+  userAgent  String?  @map("user_agent")
+  ipAddress  String?  @map("ip_address")
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("sessions")
+}
+
+/// Histórico de senhas criptografadas (evita reutilização das últimas 3).
+model PasswordHistory {
+  id           Int      @id @default(autoincrement())
+  userId       String   @map("user_id")
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_history")
+}
+
+/// Trilha de auditoria e segurança permanente.
+model SecurityAuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    String?  @map("user_id")
+  event     String
+  details   String?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  timestamp DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([event])
+  @@map("security_audit_logs")
+}
+

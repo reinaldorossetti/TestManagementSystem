@@ -1,5 +1,6 @@
 import { INITIAL_DB_SEED } from '@/src/utils/sqliteEngine';
 import type { PrismaClient } from '@/generated/prisma/client';
+import { hashPassword } from '@/src/server/utils/crypto';
 
 export interface SeedDatabaseOptions {
   /** Explicitly replace every persisted row with the canonical seed. */
@@ -19,6 +20,26 @@ export async function seedDatabase(
 ): Promise<void> {
   const seed = INITIAL_DB_SEED;
   const replaceExisting = options.replaceExisting === true;
+
+  // Garante que o administrador padrão sempre exista no banco
+  const adminPassHash = hashPassword('Admin@QA2026!Secure');
+  await prisma.user.upsert({
+    where: { email: 'admin@tms.local' },
+    update: {
+      passwordHash: adminPassHash,
+      status: 'ACTIVE',
+      failedAttempts: 0,
+      role: 'admin',
+    },
+    create: {
+      name: 'Administrador Master',
+      email: 'admin@tms.local',
+      passwordHash: adminPassHash,
+      role: 'admin',
+      status: 'ACTIVE',
+      failedAttempts: 0,
+    },
+  });
 
   await prisma.$transaction(async (tx) => {
     if (!replaceExisting) {
@@ -147,6 +168,21 @@ export async function seedDatabase(
               time: entry.time,
             })),
           },
+        },
+      });
+    }
+
+    const userCount = await tx.user.count();
+    if (userCount === 0) {
+      const adminPassHash = hashPassword('Admin@QA2026!Secure');
+      await tx.user.create({
+        data: {
+          name: 'Administrador Master',
+          email: 'admin@tms.local',
+          passwordHash: adminPassHash,
+          role: 'admin',
+          status: 'ACTIVE',
+          failedAttempts: 0,
         },
       });
     }

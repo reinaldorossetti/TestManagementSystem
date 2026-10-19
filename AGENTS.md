@@ -456,6 +456,6 @@ O antigo monolito **`src/App.tsx`** (~6.500 linhas) foi desmembrado em uma arqui
    - `SettingsModal.tsx`: Configurações de diretórios de saída do Robot e reset do banco relacional.
 
 5. **Container Raiz Reestruturado (`src/App.tsx`)**:
-   - Reduzido para ~250 linhas, atuando como container limpo responsável exclusivamente pelo roteamento de abas, sincronização global e renderização das visões.
+   - Reduzido para ~750 linhas, atuando como container limpo responsável exclusivamente pelo roteamento de abas, sincronização global e renderização das visões.
 
 

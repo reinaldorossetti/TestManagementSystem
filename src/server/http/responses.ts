@@ -82,6 +82,24 @@ export async function handleRoute(handler: () => Promise<NextResponse>): Promise
     if (error instanceof EvidenceNotFoundError) {
       return fail(error.message, 404);
     }
+    if (error instanceof Error) {
+      if (error.name === 'AuthenticationError') {
+        const attemptsLeft = (error as { attemptsLeft?: number }).attemptsLeft;
+        return fail(error.message, 401, { attemptsLeft });
+      }
+      if (error.name === 'AccountLockedError') {
+        return fail(error.message, 423); // 423 Locked
+      }
+      if (error.name === 'AuthorizationError') {
+        return fail(error.message, 403);
+      }
+      if (error.name === 'ConflictError') {
+        return fail(error.message, 409);
+      }
+      if (error.name === 'NotFoundError') {
+        return fail(error.message, 404);
+      }
+    }
     const message = error instanceof Error ? error.message : 'Erro interno do servidor.';
     console.error('[api] Unhandled route error:', error);
     return fail(message, 500);
