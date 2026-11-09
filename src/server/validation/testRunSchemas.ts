@@ -141,7 +141,7 @@ export const createTestRunSchema = z
     sourceTestCaseIds: z.array(z.string().trim().min(1)).optional(),
     folderPath: z.string().trim().optional(),
     folderPaths: z.array(z.string().trim().min(1)).optional(),
-    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }),
+    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }).optional(),
   })
   .superRefine((data, ctx) => {
     const browserVal = (data.browserOrDevice ?? '').trim();
@@ -182,7 +182,7 @@ export const updateTestRunSchema = z
     suiteType: testRunSuiteTypeSchema.optional(),
     mode: testRunModeSchema.optional(),
     plannedStartAt: z.string().trim().optional().nullable(),
-    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }),
+    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }).optional(),
   })
   .superRefine((data, ctx) => {
     if (
@@ -205,7 +205,7 @@ export const includeTestRunCasesSchema = z
     sourceTestCaseIds: z.array(z.string().trim().min(1)).optional(),
     folderPath: z.string().trim().min(1).optional(),
     folderPaths: z.array(z.string().trim().min(1)).optional(),
-    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }),
+    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }).optional(),
   })
   .refine(
     (data) =>
@@ -236,7 +236,7 @@ export const testRunResultSchema = z
       .max(86400, 'A duração deve estar entre 0 e 86400 segundos.')
       .optional()
       .nullable(),
-    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }),
+    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }).optional(),
   })
   .superRefine((data, ctx) => {
     const trimmedNotes = (data.notes ?? '').trim();
@@ -261,7 +261,7 @@ export const testRunEvidenceLinkSchema = z
         message: 'Apenas links http/https são permitidos.',
       }),
     title: z.string().trim().max(200).optional().default(''),
-    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }),
+    executionId: z.undefined({ message: 'O módulo Test Runs não aceita executionId.' }).optional(),
   });
 
 export type TestRunEvidenceLinkInput = z.infer<typeof testRunEvidenceLinkSchema>;

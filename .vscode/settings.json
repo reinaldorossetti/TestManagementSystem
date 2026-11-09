@@ -6,5 +6,6 @@
         "bash": {
             "path": "/bin/bash"
         }
-    }
+    },
+    "compilets.autoStart": true
 }
