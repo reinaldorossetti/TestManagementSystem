@@ -248,28 +248,37 @@ export class TestRunRepository {
   async listCatalogProjects(): Promise<CatalogProjectSummary[]> {
     await ensureTestRunTables();
     const client = getLibsqlClient();
+    const byId = new Map<string, CatalogProjectSummary>();
+
     try {
       const res = await client.execute(
         'SELECT id, name, platform, details FROM projects ORDER BY name ASC;',
       );
-      if (res.rows.length > 0) {
-        return res.rows.map((r) => ({
-          id: String(r.id),
+      for (const r of res.rows) {
+        const id = String(r.id);
+        byId.set(id, {
+          id,
           name: String(r.name),
           platform: r.platform !== null && r.platform !== undefined ? String(r.platform) : null,
           details: r.details !== null && r.details !== undefined ? String(r.details) : null,
-        }));
+        });
       }
     } catch {
       // Fallback to seed below if table not ready
     }
 
-    return (INITIAL_DB_SEED.projects ?? []).map((p) => ({
-      id: p.id,
-      name: p.name,
-      platform: p.platform ?? null,
-      details: p.details ?? null,
-    }));
+    for (const p of INITIAL_DB_SEED.projects ?? []) {
+      if (!byId.has(p.id)) {
+        byId.set(p.id, {
+          id: p.id,
+          name: p.name,
+          platform: p.platform ?? null,
+          details: p.details ?? null,
+        });
+      }
+    }
+
+    return Array.from(byId.values());
   }
 
   /**
@@ -303,25 +312,17 @@ export class TestRunRepository {
         }
       }
 
-      const casesRes = await client.execute(
-        'SELECT DISTINCT folder FROM test_cases_sphere WHERE folder IS NOT NULL ORDER BY folder ASC;',
-      );
-      for (const row of casesRes.rows) {
-        const folder = String(row.folder);
+      const allCases = await this.listAllCatalogCases();
+      for (const tc of allCases) {
+        const folder = tc.folder;
         if (!folder) continue;
-        if (otherProjectFolders.has(folder)) continue;
-        const matchesExplicitOrPrefix =
-          folderSet.has(folder) ||
-          Array.from(folderSet).some((f) => folder.startsWith(`${f}/`));
-        if (matchesExplicitOrPrefix || (projectId === 'PROJ-DEFAULT' && fpRes.rows.length === 0)) {
-          folderSet.add(folder);
-        }
+        folderSet.add(folder);
       }
     } catch {
       // Fallback to seed if needed
     }
 
-    if (folderSet.size === 0 && projectId === 'PROJ-DEFAULT') {
+    if (folderSet.size === 0) {
       for (const fp of INITIAL_DB_SEED.folder_projects ?? []) {
         if (fp.project_id === projectId) {
           folderSet.add(fp.folder_path);
@@ -341,28 +342,36 @@ export class TestRunRepository {
   async listAllCatalogCases(): Promise<CatalogCaseSummary[]> {
     await ensureTestRunTables();
     const client = getLibsqlClient();
+    const byId = new Map<string, CatalogCaseSummary>();
     try {
       const res = await client.execute(
         'SELECT id, folder, title, preconditions FROM test_cases_sphere ORDER BY created_at ASC;',
       );
-      if (res.rows.length > 0) {
-        return res.rows.map((r) => ({
-          id: String(r.id),
+      for (const r of res.rows) {
+        const id = String(r.id);
+        byId.set(id, {
+          id,
           folder: String(r.folder),
           title: String(r.title),
           preconditions: String(r.preconditions ?? ''),
-        }));
+        });
       }
     } catch {
       // Fallback to seed below
     }
 
-    return (INITIAL_DB_SEED.test_cases_sphere ?? []).map((c) => ({
-      id: c.id,
-      folder: c.folder,
-      title: c.title,
-      preconditions: c.preconditions ?? '',
-    }));
+    for (const c of INITIAL_DB_SEED.test_cases_sphere ?? []) {
+      if (!byId.has(c.id)) {
+        byId.set(c.id, {
+          id: c.id,
+          folder: c.folder,
+          title: c.title,
+          preconditions: c.preconditions ?? '',
+        });
+      }
+    }
+
+    return Array.from(byId.values());
   }
 
   async createTestRun(data: {

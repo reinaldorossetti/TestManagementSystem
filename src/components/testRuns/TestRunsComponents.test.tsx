@@ -13,6 +13,78 @@ import { TestRunForm } from './TestRunForm';
 const { describe } = test;
 const it = test;
 
+interface PwJsxNode {
+  __pw_type: 'jsx';
+  type: unknown;
+  props: Record<string, unknown>;
+  key: string | null;
+}
+
+function isPwJsxNode(val: unknown): val is PwJsxNode {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    '__pw_type' in val &&
+    (val as { __pw_type: unknown }).__pw_type === 'jsx'
+  );
+}
+
+function toReactNode(node: unknown): React.ReactNode {
+  if (Array.isArray(node)) {
+    return node.map((child, idx) => {
+      const converted = toReactNode(child);
+      if (React.isValidElement(converted) && converted.key == null) {
+        return React.cloneElement(converted, { key: idx });
+      }
+      return converted;
+    });
+  }
+  if (isPwJsxNode(node)) {
+    const { type, props, key } = node;
+    const nextProps: Record<string, unknown> = { ...props };
+    if (key !== null && key !== undefined) {
+      nextProps.key = key;
+    }
+    const rawChildren = nextProps.children;
+    delete nextProps.children;
+    const convertedChildren =
+      rawChildren !== undefined ? toReactNode(rawChildren) : undefined;
+
+    if (typeof type === 'function') {
+      const WrappedComponent = (compProps: Record<string, unknown>) => {
+        const res = (type as (p: Record<string, unknown>) => unknown)(compProps);
+        return toReactNode(res) as React.ReactElement;
+      };
+      return convertedChildren !== undefined
+        ? React.createElement(WrappedComponent, nextProps, convertedChildren)
+        : React.createElement(WrappedComponent, nextProps);
+    }
+
+    if (typeof type === 'object' && type !== null && 'render' in type) {
+      const WrappedForwardRef = (compProps: Record<string, unknown>) => {
+        const res = (
+          type as { render: (p: Record<string, unknown>, ref: null) => unknown }
+        ).render(compProps, null);
+        return toReactNode(res) as React.ReactElement;
+      };
+      return convertedChildren !== undefined
+        ? React.createElement(WrappedForwardRef, nextProps, convertedChildren)
+        : React.createElement(WrappedForwardRef, nextProps);
+    }
+
+    const resolvedType =
+      typeof type === 'string' || typeof type === 'symbol' ? type : React.Fragment;
+    return convertedChildren !== undefined
+      ? React.createElement(resolvedType, nextProps, convertedChildren)
+      : React.createElement(resolvedType, nextProps);
+  }
+  return node as React.ReactNode;
+}
+
+function renderComponentToHtml(jsxNode: unknown): string {
+  return renderToStaticMarkup(toReactNode(jsxNode) as React.ReactElement);
+}
+
 describe('Componentes Test Runs — Formulário e Scorecard', () => {
   const sampleProjects = [
     {
@@ -70,7 +142,7 @@ describe('Componentes Test Runs — Formulário e Scorecard', () => {
   });
 
   it('TestRunForm não preenche plataforma a partir do projeto', () => {
-    const html = renderToStaticMarkup(
+    const html = renderComponentToHtml(
       <TestRunForm projects={sampleProjects} onSubmit={() => {}} />,
     );
     expect(html).toContain('data-testid="test-run-platform-select"');
@@ -103,7 +175,7 @@ describe('Componentes Test Runs — Formulário e Scorecard', () => {
       },
     ]);
 
-    const html = renderToStaticMarkup(<ScorecardTable scorecard={scorecard} />);
+    const html = renderComponentToHtml(<ScorecardTable scorecard={scorecard} />);
 
     expect(html).toContain('75% (18)');
     expect(html).toContain('46.2% (12)');
@@ -135,13 +207,13 @@ describe('Componentes Test Runs — Formulário e Scorecard', () => {
       },
     ]);
 
-    const html = renderToStaticMarkup(<ScorecardTable scorecard={scorecard} />);
+    const html = renderComponentToHtml(<ScorecardTable scorecard={scorecard} />);
 
     expect(html).toContain('data-testid="scorecard-warning-DIFFERENT_VERSIONS"');
   });
 
   it('ScorecardEmptyState desabilita exportação', () => {
-    const html = renderToStaticMarkup(<ScorecardEmptyState />);
+    const html = renderComponentToHtml(<ScorecardEmptyState />);
 
     expect(html).toContain('data-testid="scorecard-export-xlsx-btn"');
     expect(html).toContain('data-testid="scorecard-export-pdf-btn"');

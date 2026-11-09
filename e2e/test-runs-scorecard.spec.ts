@@ -98,14 +98,14 @@ test.describe('Test Runs Scorecard — Comparativo Chrome vs Firefox, Exportaç�
     await expect(page.getByTestId('scorecard-aggregate-failed')).toContainText('25% (1)');
 
     // 5. Exportar XLSX e PDF com corpo não vazio (AC-SCR-06, AC-SCR-07)
-    const xlsxRes = await request.get(
+    const xlsxRes = await page.request.get(
       `/api/test-runs/scorecard/export?milestone=${encodeURIComponent(milestone)}&format=xlsx`,
     );
     expect(xlsxRes.status()).toBe(200);
     const xlsxBody = await xlsxRes.body();
     expect(xlsxBody.byteLength).toBeGreaterThan(100);
 
-    const pdfRes = await request.get(
+    const pdfRes = await page.request.get(
       `/api/test-runs/scorecard/export?milestone=${encodeURIComponent(milestone)}&format=pdf`,
     );
     expect(pdfRes.status()).toBe(200);

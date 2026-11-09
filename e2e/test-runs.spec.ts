@@ -31,24 +31,24 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
     await expect(page.getByTestId('test-run-form')).toBeVisible();
 
     // Plataforma inicia vazia (AC-PLT-05)
-    await expect(page.getByTestId('run-platform-select')).toHaveValue('');
+    await expect(page.getByTestId('test-run-platform-select')).toHaveValue('');
 
     // Rejeita versão textual como "latest" (AC-VER-02)
-    await page.getByTestId('run-version-input').fill('latest');
-    await page.getByTestId('run-platform-select').selectOption('Web');
-    await page.getByTestId('run-milestone-input').fill('Sprint 24');
-    await page.getByTestId('submit-test-run-btn').click();
+    await page.getByTestId('test-run-version-input').fill('latest');
+    await page.getByTestId('test-run-platform-select').selectOption('Web');
+    await page.getByTestId('test-run-milestone-input').fill('Sprint 24');
+    await page.getByTestId('test-run-submit-btn').click();
     await expect(page.getByTestId('test-run-form-error')).toBeVisible();
 
     // Rejeita plataforma Web sem browserOrDevice (AC-PLT-02)
-    await page.getByTestId('run-version-input').fill('2.5.0');
-    await page.getByTestId('submit-test-run-btn').click();
+    await page.getByTestId('test-run-version-input').fill('2.5.0');
+    await page.getByTestId('test-run-submit-btn').click();
     await expect(page.getByTestId('test-run-form-error')).toBeVisible();
 
     // Verifica sugestão automática de nome (AC-CFG-02)
-    await page.getByTestId('run-browser-input').fill('Chrome');
-    await expect(page.getByTestId('run-name-input')).toHaveValue(
-      'Sprint 24 - v2.5.0 - Web Chrome - Regressão',
+    await page.getByTestId('test-run-browser-input').fill('Chrome');
+    await expect(page.getByTestId('test-run-name-input')).toHaveValue(
+      'Sprint 24 - Chrome - Regressão Login',
     );
     await page.getByTestId('cancel-test-run-btn').click();
 
@@ -63,7 +63,7 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
     });
 
     await expect(page.getByTestId('selected-run-version')).toHaveText('2.5.0');
-    await expect(page.getByTestId('selected-run-status-badge')).toContainText('Rascunho');
+    await expect(page.getByTestId('selected-run-status')).toContainText('Rascunho');
 
     // 4. Incluir os casos de uma feature pelo seletor do próprio módulo (AC-SEL-01, AC-SEL-02)
     await testRunsPage.includeFolderFromSelector(
@@ -71,7 +71,7 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
     );
 
     // 4.1 Incluir novamente a mesma pasta deve exibir aviso de duplicatas ignoradas (AC-SEL-03)
-    await page.getByTestId('include-folder-btn').click();
+    await page.getByTestId('include-folder-cases-btn').click();
     await expect(page.getByTestId('skipped-duplicates-notice')).toBeVisible();
 
     // 4.2 Remover um caso Open antes de executar (AC-SEL-04)
@@ -86,13 +86,13 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
     });
 
     // Primeiro resultado deve mover o ciclo para In Progress (AC-LCY-03)
-    await expect(page.getByTestId('selected-run-status-badge')).toContainText('Em Progresso');
+    await expect(page.getByTestId('selected-run-status')).toContainText('Em Progresso');
 
     await testRunsPage.attachLinkEvidenceToActiveCase(
       'https://jira.tms.local/browse/RUN-EVID-01',
       'Evidência exclusiva do ciclo',
     );
-    await expect(page.getByTestId('active-case-evidence-list')).toContainText(
+    await expect(page.getByTestId('run-case-evidence-list')).toContainText(
       'Evidência exclusiva do ciclo',
     );
 
@@ -139,7 +139,7 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
     await expect(page.getByTestId('scorecard-table')).toBeVisible();
     await expect(page.getByTestId('scorecard-export-restricted-badge')).toBeVisible();
 
-    const exportAttempt = await request.get(
+    const exportAttempt = await page.request.get(
       '/api/test-runs/scorecard/export?milestone=Sprint%2024&format=xlsx',
     );
     expect(exportAttempt.status()).toBe(403);
@@ -168,20 +168,20 @@ test.describe('Test Runs — Ciclo isolado, validações, resultados, evidência
 
     // Editar versão antes de ter resultados gravados (AC-VER-04)
     await page.getByTestId('edit-run-version-btn').click();
-    await page.getByTestId('edit-run-version-input').fill('3.0.0');
-    await page.getByTestId('save-run-version-btn').click();
+    await page.getByTestId('update-version-input').fill('3.0.0');
+    await page.getByTestId('save-updated-version-btn').click();
     await expect(page.getByTestId('selected-run-version')).toHaveText('3.0.0');
 
     // Iniciar ciclo explicitamente (AC-LCY-02)
-    await page.getByTestId('lifecycle-start-btn').click();
-    await expect(page.getByTestId('selected-run-status-badge')).toContainText('Em Progresso');
+    await page.getByTestId('start-run-btn').click();
+    await expect(page.getByTestId('selected-run-status')).toContainText('Em Progresso');
 
     // Abortar ciclo (AC-LCY-04)
-    await page.getByTestId('lifecycle-abort-btn').click();
-    await expect(page.getByTestId('selected-run-status-badge')).toContainText('Abortado');
+    await page.getByTestId('abort-run-btn').click();
+    await expect(page.getByTestId('selected-run-status')).toContainText('Abortado');
 
     // Reabrir ciclo como admin (AC-LCY-05)
-    await page.getByTestId('lifecycle-reopen-btn').click();
-    await expect(page.getByTestId('selected-run-status-badge')).toContainText('Em Progresso');
+    await page.getByTestId('reopen-run-btn').click();
+    await expect(page.getByTestId('selected-run-status')).toContainText('Em Progresso');
   });
 });

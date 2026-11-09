@@ -39,6 +39,12 @@ export const TestRunForm: React.FC<TestRunFormProps> = ({
   const [projectId, setProjectId] = useState<string>(
     initialProjectId ?? projects[0]?.id ?? 'PROJ-DEFAULT',
   );
+
+  React.useEffect(() => {
+    if (projects.length > 0 && !projects.some((p) => p.id === projectId)) {
+      setProjectId(initialProjectId ?? projects[0].id);
+    }
+  }, [projects, projectId, initialProjectId]);
   // AC-PLT-05: Platform starts empty even if the project has a platform configured
   const [platform, setPlatform] = useState<string>('');
   const [environment, setEnvironment] = useState<TestRunEnvironment>('Homologação');
@@ -442,6 +448,7 @@ export const TestRunForm: React.FC<TestRunFormProps> = ({
         {onCancel && (
           <button
             type="button"
+            data-testid="cancel-test-run-btn"
             onClick={onCancel}
             className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500 text-xs font-mono font-bold text-slate-300 cursor-pointer"
           >
