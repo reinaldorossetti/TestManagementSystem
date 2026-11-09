@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:unit": "playwright test src/server/services/testRunScorecard.test.ts src/server/validation/testRunSchemas.test.ts src/components/testRuns/TestRunsComponents.test.tsx",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",

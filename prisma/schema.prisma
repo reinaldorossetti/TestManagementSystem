@@ -268,3 +268,83 @@ model SecurityAuditLog {
   @@map("security_audit_logs")
 }
 
+model TestRun {
+  id               String            @id
+  projectId        String            @map("project_id")
+  projectName      String            @map("project_name")
+  name             String
+  appVersion       String            @map("app_version")
+  platform         String
+  environment      String
+  browserOrDevice  String?           @map("browser_or_device")
+  milestone        String
+  suiteType        String            @map("suite_type")
+  mode             String
+  status           String            @default("Draft")
+  plannedStartAt   String?           @map("planned_start_at")
+  startedAt        String?           @map("started_at")
+  closedAt         String?           @map("closed_at")
+  createdByUserId  String            @map("created_by_user_id")
+  createdAt        String            @map("created_at")
+  updatedAt        String            @map("updated_at")
+  cases            TestRunCase[]
+  events           TestRunEvent[]
+
+  @@index([projectId])
+  @@index([milestone])
+  @@index([status])
+  @@map("test_runs")
+}
+
+model TestRunCase {
+  id                 String            @id
+  testRunId          String            @map("test_run_id")
+  sourceTestCaseId   String            @map("source_test_case_id")
+  folderSnapshot     String            @map("folder_snapshot")
+  titleSnapshot      String            @map("title_snapshot")
+  badgeSnapshot      String            @map("badge_snapshot")
+  status             String            @default("Open")
+  notes              String            @default("")
+  durationS          Float?            @map("duration_s")
+  executedByUserId   String?           @map("executed_by_user_id")
+  executedAt         String?           @map("executed_at")
+  testRun            TestRun           @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  evidence           TestRunEvidence[]
+
+  @@unique([testRunId, sourceTestCaseId])
+  @@index([testRunId])
+  @@map("test_run_cases")
+}
+
+model TestRunEvent {
+  id          String  @id
+  testRunId   String  @map("test_run_id")
+  userId      String  @map("user_id")
+  action      String
+  summary     String  @default("")
+  time        String
+  testRun     TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+
+  @@index([testRunId])
+  @@map("test_run_events")
+}
+
+model TestRunEvidence {
+  id           String      @id
+  testRunCaseId String     @map("test_run_case_id")
+  evidenceType String      @map("evidence_type")
+  title        String      @default("")
+  mimeType     String?     @map("mime_type")
+  fileName     String?     @map("file_name")
+  imageData    Bytes?      @map("image_data")
+  storagePath  String?     @map("storage_path")
+  externalUrl  String?     @map("external_url")
+  createdAt    String      @map("created_at")
+  createdBy    String      @map("created_by")
+  testRunCase  TestRunCase @relation(fields: [testRunCaseId], references: [id], onDelete: Cascade)
+
+  @@index([testRunCaseId])
+  @@map("test_run_evidence")
+}
+
+

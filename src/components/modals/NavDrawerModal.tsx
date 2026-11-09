@@ -177,6 +177,46 @@ export const NavDrawerModal: React.FC<NavDrawerModalProps> = ({
               </div>
             );
           })}
+
+          <div
+            onClick={() => {
+              onClose();
+              if (typeof window !== 'undefined') {
+                window.location.assign('/test-runs');
+              }
+            }}
+            data-testid="nav-panel-item-test-runs"
+            className="p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 relative overflow-hidden group bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-950"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg border bg-slate-900 border-slate-800 text-slate-400 group-hover:text-slate-200">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <span className="font-bold text-sm text-slate-100 group-hover:text-white font-sans">
+                  Test Runs
+                </span>
+              </div>
+
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border bg-slate-900 text-slate-400 border-slate-800">
+                {t('Ciclos & Scorecard', 'Cycles & Scorecard')}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 font-sans leading-relaxed pl-9">
+              {t(
+                'Ciclos de teste por versão, plataforma, ambiente e browser com Scorecard de execução.',
+                'Test cycles by version, platform, environment, and browser with execution Scorecard.',
+              )}
+            </p>
+
+            <div className="flex items-center justify-end pt-1">
+              <span className="text-[11px] font-mono font-bold flex items-center gap-1 transition-all text-slate-500 group-hover:text-slate-300">
+                {t('Acessar Painel', 'Access Panel')}
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
