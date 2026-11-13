@@ -13,6 +13,8 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { NavDrawerModal } from '@/src/components/modals/NavDrawerModal';
+import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 
 export interface TestRunAuthUser {
   id: string;
@@ -37,6 +39,7 @@ export const TestRunShellHeader: React.FC<TestRunShellHeaderProps> = ({
   t,
 }) => {
   const [isNavDrawerOpen, setIsNavDrawerOpen] = useState(false);
+  const { theme, toggleTheme } = useAppTheme('dark');
 
   const handleLogout = async () => {
     try {
@@ -148,6 +151,9 @@ export const TestRunShellHeader: React.FC<TestRunShellHeaderProps> = ({
             <span className="text-slate-400 uppercase font-bold text-[9px]">{t('DB:', 'DB:')}</span>
             <span className="text-emerald-400 font-bold">{t('CONECTADO', 'CONNECTED')}</span>
           </div>
+
+          {/* Theme Switcher */}
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
 
           {/* Language Switcher */}
           <button

@@ -21,7 +21,7 @@ export async function seedDatabase(
   const seed = INITIAL_DB_SEED;
   const replaceExisting = options.replaceExisting === true;
 
-  // Garante que o administrador padrão sempre exista no banco
+  // Garante que o administrador padrão e o usuário de consulta sempre existam no banco
   const adminPassHash = hashPassword('Admin@QA2026!Secure');
   await prisma.user.upsert({
     where: { email: 'admin@tms.local' },
@@ -36,6 +36,25 @@ export async function seedDatabase(
       email: 'admin@tms.local',
       passwordHash: adminPassHash,
       role: 'admin',
+      status: 'ACTIVE',
+      failedAttempts: 0,
+    },
+  });
+
+  const viewerPassHash = hashPassword('Consulta@QA2026!Pass');
+  await prisma.user.upsert({
+    where: { email: 'consulta@tms.local' },
+    update: {
+      passwordHash: viewerPassHash,
+      status: 'ACTIVE',
+      failedAttempts: 0,
+      role: 'tester',
+    },
+    create: {
+      name: 'Usuário Consulta',
+      email: 'consulta@tms.local',
+      passwordHash: viewerPassHash,
+      role: 'tester',
       status: 'ACTIVE',
       failedAttempts: 0,
     },

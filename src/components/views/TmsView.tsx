@@ -94,6 +94,8 @@ import { handleExportToExcel } from '../../utils/excelExporter';
 import { handleExportTestCasesToPDF } from '../../utils/pdfExporter';
 import { buildStatusByCaseId } from '../../utils/sphereCaseExecution';
 import { apiClient } from '../../lib/api/client';
+import { ThemeToggleButton } from '../ui/ThemeToggleButton';
+import { useAppTheme } from '../../hooks/useAppTheme';
 const extractPrimaryScenarioTagFromPreconditions = (preconditions?: string): string | null => {
   if (!preconditions) return null;
   const tagMatch = preconditions.match(/@([A-Za-z0-9_-]+)/);
@@ -298,6 +300,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
   const [editFolderNameValue, setEditFolderNameValue] = useState('');
   const [applyObservationToFolder, setApplyObservationToFolder] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { theme, toggleTheme } = useAppTheme('light');
 
   // Project state
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
@@ -619,6 +622,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
           <button
             type="button"
             onClick={() => {

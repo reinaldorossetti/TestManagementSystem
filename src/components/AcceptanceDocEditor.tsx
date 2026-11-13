@@ -17,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { AcceptanceCriteriaMarkdown } from '@/src/components/AcceptanceCriteriaMarkdown';
+import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 import { apiClient, ApiClientError } from '@/src/lib/api/client';
 import type { DbFolderAcceptanceDoc, DbFolderAcceptanceDocHistory } from '@/src/utils/sqliteEngine';
 
@@ -54,6 +56,7 @@ export function AcceptanceDocEditor({
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { theme, toggleTheme } = useAppTheme('light');
 
   const lineCount = markdown.split('\n').length;
   const hasTables = /^\|.+\|$/m.test(markdown);
@@ -129,7 +132,10 @@ export function AcceptanceDocEditor({
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f4f7fb] text-slate-900">
+    <main
+      data-theme-base="light"
+      className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900"
+    >
       {/* Ambient background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-32 top-0 h-96 w-96 rounded-full bg-sky-300/20 blur-3xl" />
@@ -161,7 +167,8 @@ export function AcceptanceDocEditor({
                 <p className="mt-2 font-mono text-xs text-slate-400">{doc.repo_relative_path}</p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
                 {!isEditing ? (
                   <>
                     <button

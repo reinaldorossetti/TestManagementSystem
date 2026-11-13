@@ -73,7 +73,7 @@ function toReactNode(node: unknown): React.ReactNode {
     }
 
     const resolvedType =
-      typeof type === 'string' || typeof type === 'symbol' ? type : React.Fragment;
+      typeof type === 'string' ? type : React.Fragment;
     return convertedChildren !== undefined
       ? React.createElement(resolvedType, nextProps, convertedChildren)
       : React.createElement(resolvedType, nextProps);

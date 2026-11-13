@@ -7,7 +7,243 @@
 }
 
 @layer base {
-  *, ::before, ::after {
+
+  *,
+  ::before,
+  ::after {
     border-color: #1e293b;
   }
+}
+
+/* ==========================================================================
+   Global Dual-Theme Support (Light <-> Dark across all screens)
+   ========================================================================== */
+
+/* 1. Light Theme applied to Dark-authored screens (/terminal, /reports, /sqlite, /test-runs, /login, /register) */
+html[data-theme="light"] body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] header,
+html[data-theme="light"] [data-theme-base="dark"] section,
+html[data-theme="light"] [data-theme-base="dark"] aside {
+  border-color: #e2e8f0;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950,
+html[data-theme="light"] [data-theme-base="dark"] .bg-\[\#0b0f19\],
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/95,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/90,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/80,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/70,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/60,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/50,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/40,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-950\/30 {
+  background-color: #f1f5f9 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/95,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/90,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/80,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/70,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/60,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/50,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-900\/40,
+html[data-theme="light"] [data-theme-base="dark"] .bg-\[\#121826\] {
+  background-color: #ffffff !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-800,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-800\/80,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-800\/60,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-800\/50,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-800\/40,
+html[data-theme="light"] [data-theme-base="dark"] .bg-slate-850 {
+  background-color: #e2e8f0 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .border-slate-800,
+html[data-theme="light"] [data-theme-base="dark"] .border-slate-800\/80,
+html[data-theme="light"] [data-theme-base="dark"] .border-slate-700,
+html[data-theme="light"] [data-theme-base="dark"] .border-slate-700\/60,
+html[data-theme="light"] [data-theme-base="dark"] .border-\[\#1e293b\],
+html[data-theme="light"] [data-theme-base="dark"] .divide-slate-800> :not(:last-child) {
+  border-color: #e2e8f0 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-white,
+html[data-theme="light"] [data-theme-base="dark"] .text-slate-100,
+html[data-theme="light"] [data-theme-base="dark"] .text-slate-200 {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-slate-400,
+html[data-theme="light"] [data-theme-base="dark"] .text-slate-500 {
+  color: #64748b !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-sky-400 {
+  color: #0284c7 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-emerald-400,
+html[data-theme="light"] [data-theme-base="dark"] .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-rose-400,
+html[data-theme="light"] [data-theme-base="dark"] .text-rose-300 {
+  color: #be123c !important;
+}
+
+html[data-theme="light"] [data-theme-base="dark"] .text-amber-400,
+html[data-theme="light"] [data-theme-base="dark"] .text-amber-300 {
+  color: #b45309 !important;
+}
+
+/* Preserve white text on solid accent buttons/badges in Light Mode */
+html[data-theme="light"] [data-theme-base="dark"] .bg-\[\#FF6600\],
+html[data-theme="light"] [data-theme-base="dark"] .bg-\[\#FF6600\] *,
+html[data-theme="light"] [data-theme-base="dark"] .bg-emerald-600,
+html[data-theme="light"] [data-theme-base="dark"] .bg-emerald-600 *,
+html[data-theme="light"] [data-theme-base="dark"] .bg-sky-600,
+html[data-theme="light"] [data-theme-base="dark"] .bg-sky-600 *,
+html[data-theme="light"] [data-theme-base="dark"] .bg-rose-600,
+html[data-theme="light"] [data-theme-base="dark"] .bg-rose-600 *,
+html[data-theme="light"] [data-theme-base="dark"] .bg-amber-600,
+html[data-theme="light"] [data-theme-base="dark"] .bg-amber-600 *,
+html[data-theme="light"] [data-theme-base="dark"] .bg-indigo-600,
+html[data-theme="light"] [data-theme-base="dark"] .bg-indigo-600 * {
+  color: #ffffff !important;
+}
+
+/* Live Terminal xterm viewport switches to white with high-contrast dark text in Light Mode */
+html[data-theme="light"] [data-theme-base="dark"] .xterm,
+html[data-theme="light"] [data-theme-base="dark"] .xterm-viewport {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* 2. Dark Theme applied to Light-authored screens (/tms, /tms/docs/acceptance/...) */
+html[data-theme="dark"] body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-50\/50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-50\/80 {
+  background-color: #0b0f19 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-white,
+html[data-theme="dark"] [data-theme-base="light"] .bg-white\/70,
+html[data-theme="dark"] [data-theme-base="light"] .bg-white\/90 {
+  background-color: #121826 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-100,
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-200,
+html[data-theme="dark"] [data-theme-base="light"] .bg-slate-200\/80 {
+  background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .border-slate-200,
+html[data-theme="dark"] [data-theme-base="light"] .border-slate-300,
+html[data-theme="dark"] [data-theme-base="light"] .divide-slate-200> :not(:last-child) {
+  border-color: #1e293b !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-900,
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-850,
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-700,
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-500,
+html[data-theme="dark"] [data-theme-base="light"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-50\/70,
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-50\/65,
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-50\/60 {
+  background-color: rgba(14, 165, 233, 0.14) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-100,
+html[data-theme="dark"] [data-theme-base="light"] .bg-sky-200\/60 {
+  background-color: rgba(14, 165, 233, 0.22) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .border-sky-100,
+html[data-theme="dark"] [data-theme-base="light"] .border-sky-200,
+html[data-theme="dark"] [data-theme-base="light"] .border-sky-200\/80 {
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-amber-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-orange-50\/60 {
+  background-color: rgba(249, 115, 22, 0.1) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .border-orange-200 {
+  border-color: rgba(249, 115, 22, 0.35) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-orange-850,
+html[data-theme="dark"] [data-theme-base="light"] .text-orange-800 {
+  color: #fb923c !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-emerald-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-emerald-50\/70,
+html[data-theme="dark"] [data-theme-base="light"] .bg-\[\#F0FDF4\]\/65 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-emerald-800 {
+  color: #34d399 !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-rose-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-rose-50\/70 {
+  background-color: rgba(244, 63, 94, 0.12) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .bg-indigo-50,
+html[data-theme="dark"] [data-theme-base="light"] .bg-indigo-50\/70 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+html[data-theme="dark"] [data-theme-base="light"] .text-sky-700,
+html[data-theme="dark"] [data-theme-base="light"] .text-sky-850 {
+  color: #38bdf8 !important;
 }

@@ -7,12 +7,15 @@ import { Cpu, UserPlus, Mail, User as UserIcon, Globe, ArrowLeft, CheckCircle2 }
 import { PasswordInput } from '@/src/components/auth/PasswordInput';
 import { PasswordStrengthMeter } from '@/src/components/auth/PasswordStrengthMeter';
 import { RoleSelector } from '@/src/components/auth/RoleSelector';
+import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 import type { UserRole } from '@/src/server/validation/authSchemas';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [language, setLanguage] = useState<'PT' | 'ENG'>('PT');
   const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
+  const { theme, toggleTheme } = useAppTheme('dark');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -76,7 +79,10 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col justify-between items-center p-4 sm:p-6 font-sans">
+    <div
+      data-theme-base="dark"
+      className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col justify-between items-center p-4 sm:p-6 font-sans"
+    >
       {/* Top Bar */}
       <div className="w-full max-w-xl flex items-center justify-between py-2">
         <Link
@@ -87,14 +93,17 @@ export default function RegisterPage() {
           <span>{t('Voltar para o Login', 'Back to Sign In')}</span>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => setLanguage((l) => (l === 'PT' ? 'ENG' : 'PT'))}
-          className="flex items-center gap-1.5 text-xs font-mono font-bold text-sky-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-        >
-          <Globe className="w-3.5 h-3.5 text-sky-500" />
-          <span>{language === 'PT' ? 'PT 🇧🇷' : 'EN 🇺🇸'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
+          <button
+            type="button"
+            onClick={() => setLanguage((l) => (l === 'PT' ? 'ENG' : 'PT'))}
+            className="flex items-center gap-1.5 text-xs font-mono font-bold text-sky-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5 text-sky-500" />
+            <span>{language === 'PT' ? 'PT 🇧🇷' : 'EN 🇺🇸'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Card Central */}

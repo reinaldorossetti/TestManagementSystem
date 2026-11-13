@@ -6,11 +6,14 @@ import { useRouter } from 'next/navigation';
 import { Cpu, LogIn, Mail, Globe, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { PasswordInput } from '@/src/components/auth/PasswordInput';
 import { LockedAccountNotice } from '@/src/components/auth/LockedAccountNotice';
+import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 
 export default function LoginPage() {
   const router = useRouter();
   const [language, setLanguage] = useState<'PT' | 'ENG'>('PT');
   const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
+  const { theme, toggleTheme } = useAppTheme('dark');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,8 +77,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col justify-between items-center p-4 sm:p-6 font-sans">
-      {/* Top Bar com Botão Voltar e Idioma */}
+    <div
+      data-theme-base="dark"
+      className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col justify-between items-center p-4 sm:p-6 font-sans"
+    >
+      {/* Top Bar com Botão Voltar, Tema e Idioma */}
       <div className="w-full max-w-md flex items-center justify-between py-2">
         <Link
           href="/terminal"
@@ -85,14 +91,17 @@ export default function LoginPage() {
           <span>{t('Voltar ao Centro QA', 'Back to QA Center')}</span>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => setLanguage((l) => (l === 'PT' ? 'ENG' : 'PT'))}
-          className="flex items-center gap-1.5 text-xs font-mono font-bold text-sky-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-        >
-          <Globe className="w-3.5 h-3.5 text-sky-500" />
-          <span>{language === 'PT' ? 'PT 🇧🇷' : 'EN 🇺🇸'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
+          <button
+            type="button"
+            onClick={() => setLanguage((l) => (l === 'PT' ? 'ENG' : 'PT'))}
+            className="flex items-center gap-1.5 text-xs font-mono font-bold text-sky-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5 text-sky-500" />
+            <span>{language === 'PT' ? 'PT 🇧🇷' : 'EN 🇺🇸'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Card Central */}
@@ -133,11 +142,10 @@ export default function LoginPage() {
               {/* Alerta de Tentativas / Erro */}
               {errorMessage && (
                 <div
-                  className={`p-3 rounded-xl border text-xs font-mono flex items-start gap-2.5 ${
-                    attemptsCount >= 2
+                  className={`p-3 rounded-xl border text-xs font-mono flex items-start gap-2.5 ${attemptsCount >= 2
                       ? 'bg-amber-950/60 border-amber-500/60 text-amber-300'
                       : 'bg-rose-950/50 border-rose-500/50 text-rose-300'
-                  }`}
+                    }`}
                 >
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
                   <div className="flex flex-col gap-0.5">
@@ -240,7 +248,7 @@ export default function LoginPage() {
 
       {/* Footer Informativo */}
       <div className="text-center font-mono text-[10px] text-slate-500 py-2">
-        <span>TMS Execution Center v2.1.0 • Protegido por OWASP Top 10 & NIST SP 800-63B</span>
+        <span>TMS Execution Center v2.1.0</span>
       </div>
     </div>
   );

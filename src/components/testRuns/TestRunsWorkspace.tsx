@@ -87,18 +87,20 @@ function getCaseStatusBadgeStyle(status: TestRunCaseStatus | string): string {
 }
 
 export const TestRunsWorkspace: React.FC = () => {
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('qa_tms_lang');
-      if (saved === 'PT' || saved === 'ENG') return saved;
-    }
-    return 'PT';
-  });
+  const [language, setLanguage] = useState<Language>('PT');
+  const hasHydratedLanguageRef = React.useRef(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('qa_tms_lang', language);
+    const saved = localStorage.getItem('qa_tms_lang');
+    if (saved === 'PT' || saved === 'ENG') {
+      setLanguage(saved);
     }
+    hasHydratedLanguageRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedLanguageRef.current) return;
+    localStorage.setItem('qa_tms_lang', language);
   }, [language]);
 
   const t = useMemo(() => createTranslator(language), [language]);
@@ -497,7 +499,10 @@ export const TestRunsWorkspace: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans select-none antialiased">
+    <div
+      data-theme-base="dark"
+      className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans select-none antialiased"
+    >
       <TestRunShellHeader
         activeSubRoute="runs"
         language={language}

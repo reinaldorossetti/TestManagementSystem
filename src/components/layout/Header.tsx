@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { Cpu, Globe, Settings, Sliders, User as UserIcon, LogIn, LogOut, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { AdminUserManagementModal } from '../auth/AdminUserManagementModal';
+import { ThemeToggleButton } from '../ui/ThemeToggleButton';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 
 interface AuthUser {
   id: string;
@@ -37,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const { theme, toggleTheme } = useAppTheme('dark');
 
   useEffect(() => {
     let isMounted = true;
@@ -143,6 +146,9 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-400 uppercase font-bold text-[9px]">{t("Repositório de Relatórios:", "Report Store:")}</span>
             <span className="text-[#FF6600] font-sans font-semibold">{robotResultsDirectory}</span>
           </div>
+
+          {/* Theme Switcher */}
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
 
           {/* Language Switcher */}
           <button

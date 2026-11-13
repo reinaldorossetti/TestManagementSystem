@@ -13,6 +13,39 @@ import {
   updateRobotExecutionProgress,
 } from '../utils/robotExecutionProgress';
 import type { DbExecution, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
+import { useAppTheme } from '../hooks/useAppTheme';
+
+const DARK_XTERM_THEME = {
+  background: '#0f172a',
+  foreground: '#cbd5e1',
+  cursor: '#FF6600',
+  selectionBackground: '#334155',
+  black: '#0f172a',
+  red: '#fb7185',
+  green: '#34d399',
+  yellow: '#fbbf24',
+  blue: '#38bdf8',
+  magenta: '#c084fc',
+  cyan: '#22d3ee',
+  white: '#e2e8f0',
+  brightBlack: '#64748b',
+} as const;
+
+const LIGHT_XTERM_THEME = {
+  background: '#ffffff',
+  foreground: '#0f172a',
+  cursor: '#ea580c',
+  selectionBackground: '#cbd5e1',
+  black: '#0f172a',
+  red: '#be123c',
+  green: '#047857',
+  yellow: '#b45309',
+  blue: '#0369a1',
+  magenta: '#7e22ce',
+  cyan: '#0e7490',
+  white: '#334155',
+  brightBlack: '#475569',
+} as const;
 
 export interface ParsedRunResult {
   execution: DbExecution;
@@ -53,6 +86,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
   const [isRunning, setIsRunning] = useState(false);
   const [persist, setPersist] = useState(true);
   const [executionProgress, setExecutionProgress] = useState(INITIAL_ROBOT_EXECUTION_PROGRESS);
+  const { theme } = useAppTheme('dark');
 
   // Inicializa o terminal uma única vez.
   useEffect(() => {
@@ -65,21 +99,7 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 12,
       lineHeight: 1.25,
-      theme: {
-        background: '#0f172a',
-        foreground: '#cbd5e1',
-        cursor: '#FF6600',
-        selectionBackground: '#334155',
-        black: '#0f172a',
-        red: '#fb7185',
-        green: '#34d399',
-        yellow: '#fbbf24',
-        blue: '#38bdf8',
-        magenta: '#c084fc',
-        cyan: '#22d3ee',
-        white: '#e2e8f0',
-        brightBlack: '#475569',
-      },
+      theme: theme === 'light' ? LIGHT_XTERM_THEME : DARK_XTERM_THEME,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -111,6 +131,12 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = theme === 'light' ? LIGHT_XTERM_THEME : DARK_XTERM_THEME;
+    }
+  }, [theme]);
 
   const runCommand = useCallback(async (overrideCmd?: string) => {
     const term = termRef.current;

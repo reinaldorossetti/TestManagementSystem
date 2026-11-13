@@ -7,27 +7,27 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { 
-  PlayCircle, 
-  CheckCircle2, 
-  Clock, 
-  Database, 
-  Terminal as TerminalIcon, 
-  Table, 
-  FileText, 
-  Sliders, 
-  X, 
-  Settings, 
-  FolderTree, 
-  Trash2, 
-  DatabaseZap, 
-  Check, 
-  Sparkles, 
-  Upload, 
-  FileSpreadsheet, 
-  Plus, 
-  Edit, 
-  Search, 
+import {
+  PlayCircle,
+  CheckCircle2,
+  Clock,
+  Database,
+  Terminal as TerminalIcon,
+  Table,
+  FileText,
+  Sliders,
+  X,
+  Settings,
+  FolderTree,
+  Trash2,
+  DatabaseZap,
+  Check,
+  Sparkles,
+  Upload,
+  FileSpreadsheet,
+  Plus,
+  Edit,
+  Search,
   ExternalLink,
   BookOpen,
   ClipboardCheck,
@@ -118,7 +118,7 @@ export default function App({ initialTab }: AppProps = {}) {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('cardmais_sphere_statuses');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return {};
@@ -135,7 +135,7 @@ export default function App({ initialTab }: AppProps = {}) {
         setRobotResultsDirectory(resultsDirectory);
         setResolvedRobotResultsDirectory(resolvedDirectory);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSaveRobotResultsDirectory = async () => {
@@ -410,8 +410,8 @@ export default function App({ initialTab }: AppProps = {}) {
     const totalExecutions = sqliteDb.executions.length;
     const totalPassedExecutions = sqliteDb.executions.filter(e => e.status === 'PASS').length;
     const totalPassRate = totalExecutions > 0 ? Math.round((totalPassedExecutions / totalExecutions) * 100) : 0;
-    const averageDuration = totalExecutions > 0 
-      ? parseFloat((sqliteDb.executions.reduce((acc, c) => acc + c.duration_s, 0) / totalExecutions).toFixed(2)) 
+    const averageDuration = totalExecutions > 0
+      ? parseFloat((sqliteDb.executions.reduce((acc, c) => acc + c.duration_s, 0) / totalExecutions).toFixed(2))
       : 0;
     const totalStepsRow = sqliteDb.steps.length;
 
@@ -420,7 +420,10 @@ export default function App({ initialTab }: AppProps = {}) {
 
   if (activeTab === 'tms') {
     return (
-      <div className="w-screen h-screen bg-slate-50 text-slate-850 flex flex-col font-sans select-none antialiased overflow-hidden">
+      <div
+        data-theme-base="light"
+        className="w-screen h-screen bg-slate-50 text-slate-850 flex flex-col font-sans select-none antialiased overflow-hidden"
+      >
         <TmsView
           sqliteDb={sqliteDb}
           setSqliteDb={setSqliteDb}
@@ -503,7 +506,10 @@ export default function App({ initialTab }: AppProps = {}) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none antialiased">
+    <div
+      data-theme-base="dark"
+      className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none antialiased"
+    >
       {/* Header Bar */}
       <Header
         language={language}
