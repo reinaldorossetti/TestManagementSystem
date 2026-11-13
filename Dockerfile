@@ -63,6 +63,9 @@ RUN rfbrowser init || true
 # Build Next.js application
 RUN npm run build
 
+# Normalize entrypoint line endings (Windows CRLF -> LF) and ensure executable permissions
+RUN sed -i 's/\r$//' /app/scripts/docker-entrypoint.sh && chmod +x /app/scripts/docker-entrypoint.sh
+
 # Set environment defaults for container execution
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -70,5 +73,8 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
-# Ensure database tables are synced on startup, then start Next.js application
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=25s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:3000/login > /dev/null || exit 1
+
+# Ensure database tables and non-destructive seed are synced on startup, then start Next.js
+CMD ["/app/scripts/docker-entrypoint.sh"]

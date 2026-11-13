@@ -23,6 +23,9 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
+    "docker:tunnel:quick": "docker compose --profile tunnel-quick up -d",
+    "docker:tunnel": "docker compose --profile tunnel up -d",
+    "docker:funnel": "docker compose --profile tailscale-funnel up -d",
     "postinstall": "prisma generate"
   },
   "dependencies": {

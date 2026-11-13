@@ -13,3 +13,9 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env
+prisma/*.db
+prisma/*.db-*
+playwright-report
+test-results
+planejamento.md
