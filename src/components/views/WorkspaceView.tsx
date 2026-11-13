@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { 
   FileCode, 
   Upload, 
@@ -95,6 +96,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   t,
 }) => {
   const [workspaceTab, setWorkspaceTab] = React.useState<'scenarios' | 'raw'>('scenarios');
+  const { isViewer } = useCurrentUser();
 
   return (
     <div className="w-full lg:w-[420px] bg-slate-900 border-r border-slate-800 flex flex-col p-5 overflow-y-auto shrink-0 gap-5">
@@ -138,22 +140,25 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             <div className="flex gap-1 flex-wrap">
               <button
                 type="button"
+                disabled={isViewer}
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="terminal-import-file-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-[#1e293b] hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold"
-                title={t("Selecione um arquivo Gherkin/Robot do seu computador", "Select Gherkin/Robot file from your computer")}
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-[#1e293b] hover:border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isViewer ? t('Usuário de consulta não pode importar arquivos', 'Viewer user cannot import files') : t("Selecione um arquivo Gherkin/Robot do seu computador", "Select Gherkin/Robot file from your computer")}
               >
                 <Upload className="w-3.5 h-3.5 text-[#FF6600]" />
                 {t("Importar File", "Import File")}
               </button>
               <button
                 type="button"
+                disabled={isViewer}
                 onClick={() => {
                   setGherkinTempText(gherkinContent);
                   setIsEditingGherkin(true);
                 }}
                 data-testid="terminal-edit-gherkin-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1"
+                title={isViewer ? t('Usuário de consulta não pode editar Gherkin', 'Viewer user cannot edit Gherkin') : undefined}
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-slate-700 text-slate-300 transition-all font-mono flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Edit className="w-3.5 h-3.5 text-sky-400" />
                 {t("Editar Gherkin", "Edit Gherkin")}
@@ -161,9 +166,14 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveCurrentWorkspaceAsCases}
+                disabled={isViewer}
                 data-testid="terminal-store-tests-button"
-                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-amber-800/60 hover:border-amber-700 text-amber-400 transition-all font-mono flex items-center gap-1 font-bold"
-                title={t("Armazenar todos os cenários individuais como casos de teste no TMS", "Store all individual scenarios as test cases in TMS")}
+                className="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-1 rounded border border-amber-800/60 hover:border-amber-700 text-amber-400 transition-all font-mono flex items-center gap-1 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  isViewer
+                    ? t('Usuário de consulta não pode cadastrar ou armazenar testes', 'Viewer user cannot register or store tests')
+                    : t('Armazenar todos os cenários individuais como casos de teste no TMS', 'Store all individual scenarios as test cases in TMS')
+                }
               >
                 <Database className="w-3.5 h-3.5 text-amber-500" />
                 {t("Armazenar Testes", "Store Tests")}
@@ -335,12 +345,14 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
                     <button
                       type="button"
+                      disabled={isViewer}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleRunFeatureReal(primaryTag);
                       }}
                       data-testid={`workspace-run-scenario-${sc.id}`}
-                      className="bg-[#FF6600] hover:bg-[#e05500] text-white px-3.5 py-1.5 rounded-lg text-xs font-black font-mono transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/20 uppercase tracking-wider"
+                      title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : undefined}
+                      className="bg-[#FF6600] hover:bg-[#e05500] text-white px-3.5 py-1.5 rounded-lg text-xs font-black font-mono transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/20 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       EXECUÇÃO

@@ -258,9 +258,18 @@ export class AuthService {
    * Resgata a sessão ativa do usuário a partir do token de cookie.
    */
   async getSessionUser(rawToken: string): Promise<Omit<User, 'passwordHash'> | null> {
+    if (!rawToken || !/^[a-f0-9]{64}$/i.test(rawToken)) {
+      return null;
+    }
     const tokenHash = hashToken(rawToken);
     const session = await this.sessionRepo.findByTokenHash(tokenHash);
-    return session ? session.user : null;
+    if (!session || session.user.status === 'BLOCKED') {
+      if (session) {
+        await this.sessionRepo.deleteByTokenHash(tokenHash);
+      }
+      return null;
+    }
+    return session.user;
   }
 
   /**

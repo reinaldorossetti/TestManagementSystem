@@ -4,6 +4,7 @@
  */
 
 import React, { useMemo, useState, useRef } from 'react';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { 
   Folder, 
   FolderOpen,
@@ -346,6 +347,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
   }, [sqliteDb.test_cases_sphere, selectedSphereFolder, sphereSearchQuery]);
 
   // Currently selected case
+  const { isViewer } = useCurrentUser();
   const currentCase = useMemo(() => {
     if (!selectedSphereTestCaseId) return filteredCases[0] || null;
     return sqliteDb.test_cases_sphere?.find((c) => c.id === selectedSphereTestCaseId) || filteredCases[0] || null;
@@ -666,17 +668,20 @@ export const TmsView: React.FC<TmsViewProps> = ({
               </select>
               <button
                 type="button"
+                disabled={isViewer}
+                data-testid="tms-create-project-button"
                 onClick={() => {
                   setIsCreatingProject(true);
                   setIsEditingProject(false);
                 }}
-                className="h-8 w-8 shrink-0 flex items-center justify-center text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg border border-sky-100 transition-all cursor-pointer"
-                title={t("Criar Novo Projeto", "Create New Project")}
+                className="h-8 w-8 shrink-0 flex items-center justify-center text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg border border-sky-100 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isViewer ? t('Usuário de consulta não pode criar projetos', 'Viewer user cannot create projects') : t("Criar Novo Projeto", "Create New Project")}
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
               <button
                 type="button"
+                data-testid="tms-edit-project-button"
                 onClick={() => {
                   if (!selectedProjectId) {
                     alert(t("Selecione um projeto para renomear.", "Select a project to rename."));
@@ -689,13 +694,13 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   setIsEditingProject(true);
                   setIsCreatingProject(false);
                 }}
-                disabled={!selectedProjectId}
+                disabled={isViewer || !selectedProjectId}
                 className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-lg border transition-all ${
-                  selectedProjectId
+                  !isViewer && selectedProjectId
                     ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400 cursor-pointer'
                     : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
                 }`}
-                title={t("Renomear Projeto Selecionado", "Rename Selected Project")}
+                title={isViewer ? t('Usuário de consulta não pode editar projetos', 'Viewer user cannot edit projects') : t("Renomear Projeto Selecionado", "Rename Selected Project")}
               >
                 <Edit className="w-3.5 h-3.5 stroke-[2]" />
               </button>
@@ -803,12 +808,14 @@ export const TmsView: React.FC<TmsViewProps> = ({
             <div className="flex flex-wrap items-stretch gap-1.5 border-t border-slate-100 pt-2.5">
               <button
                 type="button"
+                disabled={isViewer}
+                data-testid="tms-new-folder-button"
                 onClick={() => {
                   setIsCreatingFolder(true);
                   setIsEditingFolder(false);
                 }}
-                className="h-8 px-2.5 text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-all border border-sky-100 flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0"
-                title={t("Criar Nova Pasta / Feature", "Create New Folder / Feature")}
+                className="h-8 px-2.5 text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-all border border-sky-100 flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isViewer ? t('Usuário de consulta não pode criar pastas', 'Viewer user cannot create folders') : t("Criar Nova Pasta / Feature", "Create New Folder / Feature")}
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
                 <span className="text-[10px] font-mono font-black pr-0.5">{t("New", "New")}</span>
@@ -816,6 +823,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
               <button
                 type="button"
+                data-testid="tms-edit-folder-button"
                 onClick={() => {
                   if (selectedSphereFolder && selectedSphereFolder !== 'all') {
                     setEditFolderNameValue(selectedSphereFolder);
@@ -825,13 +833,13 @@ export const TmsView: React.FC<TmsViewProps> = ({
                     alert(t("Selecione uma pasta de teste específica para editar.", "Select a specific test folder to edit."));
                   }
                 }}
-                className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 ${
-                  selectedSphereFolder && selectedSphereFolder !== 'all'
-                    ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400'
+                className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 font-bold shrink-0 ${
+                  !isViewer && selectedSphereFolder && selectedSphereFolder !== 'all'
+                    ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 border-slate-200 hover:border-indigo-400 cursor-pointer'
                     : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
                 }`}
-                disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
-                title={t("Editar Pasta Selecionada", "Edit Selected Folder")}
+                disabled={isViewer || !selectedSphereFolder || selectedSphereFolder === 'all'}
+                title={isViewer ? t('Usuário de consulta não pode editar pastas', 'Viewer user cannot edit folders') : t("Editar Pasta Selecionada", "Edit Selected Folder")}
               >
                 <Edit className="w-3.5 h-3.5 stroke-[2]" />
                 <span className="text-[10px] font-mono font-black pr-0.5">{t("Edit", "Edit")}</span>
@@ -839,6 +847,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
               <button
                 type="button"
+                data-testid="tms-delete-folder-button"
                 onClick={() => {
                   if (selectedSphereFolder && selectedSphereFolder !== 'all') {
                     handleDeleteFolder(selectedSphereFolder);
@@ -846,13 +855,13 @@ export const TmsView: React.FC<TmsViewProps> = ({
                     alert(t("Selecione uma pasta de teste específica para excluir.", "Select a specific test folder to delete."));
                   }
                 }}
-                className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 cursor-pointer font-bold shrink-0 ${
-                  selectedSphereFolder && selectedSphereFolder !== 'all'
-                    ? 'text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border-slate-200 hover:border-rose-400'
+                className={`h-8 px-2.5 rounded-lg transition-all border flex items-center justify-center gap-1 font-bold shrink-0 ${
+                  !isViewer && selectedSphereFolder && selectedSphereFolder !== 'all'
+                    ? 'text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border-slate-200 hover:border-rose-400 cursor-pointer'
                     : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-50'
                 }`}
-                disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
-                title={t("Excluir Pasta com todos os Testes", "Delete Folder with All Associated Tests")}
+                disabled={isViewer || !selectedSphereFolder || selectedSphereFolder === 'all'}
+                title={isViewer ? t('Usuário de consulta não pode excluir pastas', 'Viewer user cannot delete folders') : t("Excluir Pasta com todos os Testes", "Delete Folder with All Associated Tests")}
               >
                 <Trash2 className="w-3.5 h-3.5 stroke-[2]" />
                 <span className="text-[10px] font-mono font-black pr-0.5">{t("Delete", "Delete")}</span>
@@ -910,10 +919,10 @@ export const TmsView: React.FC<TmsViewProps> = ({
             <button
               type="button"
               onClick={handleImportTestsFromTmsClick}
-              disabled={!selectedProjectId}
+              disabled={isViewer || !selectedProjectId}
               data-testid="tms-import-tests-button"
               className="h-9 w-full px-2.5 text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 disabled:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed rounded-lg transition-all border border-sky-200 hover:border-sky-500 disabled:border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer font-bold mt-1"
-              title={t("Importar um arquivo de testes e salvar todos os cenários no TMS", "Import a test file and save all scenarios in TMS")}
+              title={isViewer ? t('Usuário de consulta não pode importar/cadastrar testes', 'Viewer user cannot import or register tests') : t("Importar um arquivo de testes e salvar todos os cenários no TMS", "Import a test file and save all scenarios in TMS")}
             >
               <Upload className="w-4 h-4" />
               <span className="text-[10px] font-mono font-black">{t("Importar Testes", "Import Tests")}</span>
@@ -1086,9 +1095,9 @@ export const TmsView: React.FC<TmsViewProps> = ({
           <button
             type="button"
             onClick={handleImportAcceptanceDocClick}
-            disabled={!selectedSphereFolder || selectedSphereFolder === 'all'}
+            disabled={isViewer || !selectedSphereFolder || selectedSphereFolder === 'all'}
             className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-slate-200 hover:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white py-2 text-[11px] font-mono font-bold text-sky-700 transition-colors shadow-sm"
-            title={t('Importar um arquivo .md compartilhado por todos os casos desta pasta', 'Import a .md file shared by all cases in this folder')}
+            title={isViewer ? t('Usuário de consulta não pode importar critérios de aceite', 'Viewer user cannot import acceptance criteria') : t('Importar um arquivo .md compartilhado por todos os casos desta pasta', 'Import a .md file shared by all cases in this folder')}
           >
             <Upload className="w-3.5 h-3.5" />
             {t('Importar Critérios de Aceite', 'Import Acceptance Criteria')}
@@ -1163,8 +1172,10 @@ export const TmsView: React.FC<TmsViewProps> = ({
                 setFormSphereObservation('Validar se o saldo é subtraído corretamente.');
                 setIsCreatingSphereTestCase(true);
               }}
+              disabled={isViewer}
               data-testid="tms-create-case-button"
-              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 py-3 rounded-xl text-xs font-mono text-sky-600 flex items-center justify-center gap-1 font-bold cursor-pointer transition-colors"
+              title={isViewer ? t('Usuário de consulta não pode cadastrar casos de teste', 'Viewer user cannot register test cases') : undefined}
+              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 py-3 rounded-xl text-xs font-mono text-sky-600 flex items-center justify-center gap-1 font-bold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-3.5 h-3.5" />
               {t("+ Create Test Case", "+ Create Test Case")}
@@ -1172,10 +1183,11 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
             <button
               type="button"
+              disabled={isViewer}
               onClick={() => handleLoadMultipleTestCasesToWorkspace(filteredCases)}
               data-testid="tms-run-plural-button"
-              className="bg-[#FF6600] hover:bg-[#E05500] text-white py-3 rounded-xl text-xs transition-colors font-mono flex items-center justify-center gap-1.5 font-extrabold shadow-md shadow-[#FF6600]/10 cursor-pointer"
-              title={t("Executar todos os casos da pasta/feature no Terminal Robot", "Run all folder/feature cases in Robot Terminal")}
+              className="bg-[#FF6600] hover:bg-[#E05500] text-white py-3 rounded-xl text-xs transition-colors font-mono flex items-center justify-center gap-1.5 font-extrabold shadow-md shadow-[#FF6600]/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : t("Executar todos os casos da pasta/feature no Terminal Robot", "Run all folder/feature cases in Robot Terminal")}
             >
               <PlayCircle className="w-4 h-4 text-white stroke-[2.5px]" />
               {t("Executar Testes", "Run Automated Tests")}
@@ -1526,8 +1538,11 @@ export const TmsView: React.FC<TmsViewProps> = ({
                   <div className="flex items-center justify-between border-t border-slate-200 pt-4 mt-2">
                     <button
                       type="button"
+                      disabled={isViewer}
                       onClick={() => handleDeleteSphereTestCase(currentCase.id)}
-                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      data-testid="tms-delete-case-button"
+                      title={isViewer ? t('Usuário de consulta não pode excluir casos de teste', 'Viewer user cannot delete test cases') : undefined}
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       {t("Excluir", "Delete")}
@@ -1536,6 +1551,7 @@ export const TmsView: React.FC<TmsViewProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
+                        disabled={isViewer}
                         onClick={() => {
                           setFormSphereId(currentCase.id);
                           setFormSphereFolder(currentCase.folder);
@@ -1548,7 +1564,8 @@ export const TmsView: React.FC<TmsViewProps> = ({
                           setIsCreatingSphereTestCase(false);
                         }}
                         data-testid="tms-edit-case-button"
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        title={isViewer ? t('Usuário de consulta não pode editar casos de teste', 'Viewer user cannot edit test cases') : undefined}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit className="w-3.5 h-3.5 text-sky-600" />
                         {t("Editar", "Edit")}
@@ -1556,9 +1573,11 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
                       <button
                         type="button"
+                        disabled={isViewer}
                         onClick={() => setManualExecutionDialogOpen(true)}
-                        className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-violet-600/10 cursor-pointer"
-                        title={t("Registrar execução manual deste caso de teste", "Record manual execution for this test case")}
+                        data-testid="tms-run-manual-button"
+                        className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-violet-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : t("Registrar execução manual deste caso de teste", "Record manual execution for this test case")}
                       >
                         <ClipboardCheck className="w-4 h-4 text-white" />
                         {t("Executar Manualmente", "Run Manually")}
@@ -1566,9 +1585,11 @@ export const TmsView: React.FC<TmsViewProps> = ({
 
                       <button
                         type="button"
+                        disabled={isViewer}
                         onClick={() => handleRunSingleTestCaseReal(currentCase)}
-                        className="bg-[#FF6600] hover:bg-[#E05500] text-white px-4.5 py-2.5 rounded-xl text-xs font-mono font-extrabold transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/10 cursor-pointer ml-1"
-                        title={t("Executar somente este caso pela tag Robot", "Run only this test case by its Robot tag")}
+                        data-testid="tms-run-singular-button"
+                        className="bg-[#FF6600] hover:bg-[#E05500] text-white px-4.5 py-2.5 rounded-xl text-xs font-mono font-extrabold transition-all flex items-center gap-1.5 shadow-md shadow-[#FF6600]/10 cursor-pointer ml-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : t("Executar somente este caso pela tag Robot", "Run only this test case by its Robot tag")}
                       >
                         <PlayCircle className="w-4 h-4 stroke-[2.5px]" />
                         {t("Executar Teste Automatizado", "Run Automated Test")}

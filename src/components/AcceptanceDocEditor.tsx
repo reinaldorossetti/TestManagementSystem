@@ -19,6 +19,7 @@ import {
 import { AcceptanceCriteriaMarkdown } from '@/src/components/AcceptanceCriteriaMarkdown';
 import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
 import { useAppTheme } from '@/src/hooks/useAppTheme';
+import { useCurrentUser } from '@/src/hooks/useCurrentUser';
 import { apiClient, ApiClientError } from '@/src/lib/api/client';
 import type { DbFolderAcceptanceDoc, DbFolderAcceptanceDocHistory } from '@/src/utils/sqliteEngine';
 
@@ -47,6 +48,7 @@ export function AcceptanceDocEditor({
   initialMarkdown,
   initialHistory,
 }: AcceptanceDocEditorProps) {
+  const { isViewer } = useCurrentUser();
   const [doc, setDoc] = useState(initialDoc);
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [draft, setDraft] = useState(initialMarkdown);
@@ -174,8 +176,9 @@ export function AcceptanceDocEditor({
                     <button
                       type="button"
                       onClick={handleStartEdit}
-                      disabled={isDeleting}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-white/10 px-4 py-2 text-xs font-mono font-bold text-white backdrop-blur-sm transition-all hover:border-sky-400 hover:bg-sky-500/20 disabled:opacity-50"
+                      disabled={isDeleting || isViewer}
+                      title={isViewer ? 'Usuário de consulta não pode editar critérios de aceite' : undefined}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-white/10 px-4 py-2 text-xs font-mono font-bold text-white backdrop-blur-sm transition-all hover:border-sky-400 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                       Editar
@@ -183,8 +186,9 @@ export function AcceptanceDocEditor({
                     <button
                       type="button"
                       onClick={() => void handleDelete()}
-                      disabled={isDeleting}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-white/10 px-4 py-2 text-xs font-mono font-bold text-rose-200 transition-all hover:border-rose-400 hover:bg-rose-500/20 disabled:opacity-50"
+                      disabled={isDeleting || isViewer}
+                      title={isViewer ? 'Usuário de consulta não pode excluir critérios de aceite' : undefined}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-white/10 px-4 py-2 text-xs font-mono font-bold text-rose-200 transition-all hover:border-rose-400 hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       {isDeleting ? 'Excluindo...' : 'Excluir'}

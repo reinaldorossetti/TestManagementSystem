@@ -710,3 +710,12 @@ Replicando a identidade premium de alta tecnologia e o estilo consolidado dos pr
 - **Texto Primário Titular**: `text-slate-100` (`#f1f5f9` / `#ffffff`) - Títulos de cenários, percentuais Allure e numerais críticos com contraste AAA.
 - **Texto Secundário**: `text-slate-350` / `text-slate-400` (`#94a3b8`) - Descrições de documentos, caminhos de resultados e subtítulos secundários estruturados.
 - **Sub-logs e Variáveis**: `text-slate-500` / `slate-550` - Metadados de timing de testes, caminhos locais e detalhes do parser SQL.
+
+---
+
+## 🔒 Controle de Acesso por Perfil (RBAC) — Usuário de Consulta (`viewer`)
+
+- **Perfil `viewer` (`consulta@tms.local`)**: acesso **somente leitura** para consulta de casos de teste, históricos, relatórios e scorecards.
+- **Restrições na UI**: botões de **cadastro/edição/exclusão/importação de testes e pastas** e botões de **execução de testes** (Terminal, TMS, Reports e Test Runs) ficam desabilitados (`disabled`) para usuários `viewer`.
+- **Restrições no Backend**: endpoints de execução (`/api/terminal/run`, `/api/terminal/output`, `/api/terminal/cancel`, `/api/executions`, `manual-execution`) e de cadastro/mutação (`/api/test-cases-sphere`, `/api/folders`, `/api/test-specs`, mutações de `/api/test-runs`) retornam **HTTP 403 Forbidden** caso sejam acionados por um usuário `viewer`.
+

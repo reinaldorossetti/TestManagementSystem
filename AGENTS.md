@@ -458,4 +458,19 @@ O antigo monolito **`src/App.tsx`** (~6.500 linhas) foi desmembrado em uma arqui
 5. **Container Raiz Reestruturado (`src/App.tsx`)**:
    - Reduzido para ~750 linhas, atuando como container limpo responsável exclusivamente pelo roteamento de abas, sincronização global e renderização das visões.
 
+---
+
+## 🔒 Regra de RBAC — Usuário de Consulta (`viewer`)
+
+O perfil **`viewer`** (Usuário de Consulta, ex.: `consulta@tms.local`) possui acesso **estritamente somente leitura** na aplicação:
+
+1. **Bloqueio de Execução e Cadastro na Interface (UI)**:
+   - Todos os botões de **execução de testes** (Terminal: *Executar Feature*, *Executar Todos os Testes*, *▶ EXECUÇÃO* por cenário; TMS: *Executar Testes*, *Executar Manualmente*, *Executar Teste Automatizado*; Reports: *Executar Feature Completa Agora*; Test Runs: *Novo Test Run*, *Incluir Pasta/Marcados*, *Registrar Resultado*) permanecem **desativados (`disabled`)** para o perfil `viewer`.
+   - Todos os botões de **cadastro, importação, edição e exclusão de testes/pastas** (TMS: *+ New*, *Edit*, *Delete*, *Importar Testes*, *Importar Critérios de Aceite*, *+ Create Test Case*, *Editar*, *Excluir*; Workspace: *Armazenar Testes*) também permanecem **desativados (`disabled`)** para o perfil `viewer`.
+2. **Proteção Obrigatória no Servidor (`403 Forbidden`)**:
+   - Todas as rotas de API de mutação e execução (`/api/terminal/run`, `/api/terminal/output`, `/api/terminal/cancel`, `/api/executions` `POST`, `/api/test-cases-sphere` `POST/PATCH/DELETE`, `/api/test-cases-sphere/[id]/manual-execution` `POST`, `/api/folders` `POST/PATCH/DELETE`, `/api/test-specs` `POST` e mutações em `TestRunService`) validam a sessão via `requireWriteAccessUser` / `requireWriteAccessResponse` e rejeitam requisições de `viewer` com HTTP `403`.
+3. **Permissões Mantidas**:
+   - O usuário `viewer` pode navegar livremente pelas telas autenticadas, visualizar casos, históricos, métricas, relatórios, scorecards e exportar relatórios em Excel/PDF quando aplicável.
+
+
 

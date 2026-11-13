@@ -70,7 +70,7 @@ export const strongPasswordSchema = z
     message: 'Esta senha é muito comum e insegura. Escolha uma combinação mais complexa.',
   });
 
-export const userRoleEnum = z.enum(['admin', 'analyst', 'tester']);
+export const userRoleEnum = z.enum(['admin', 'analyst', 'tester', 'viewer']);
 export type UserRole = z.infer<typeof userRoleEnum>;
 
 export const userStatusEnum = z.enum(['ACTIVE', 'BLOCKED', 'PENDING']);

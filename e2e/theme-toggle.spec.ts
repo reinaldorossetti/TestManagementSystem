@@ -4,6 +4,13 @@ test.describe('Theme Toggle across all screens', () => {
   test('renders modern theme toggle on all screens and persists Light/Dark switching', async ({
     page,
   }) => {
+    // Login with viewer credentials to access authenticated feature screens
+    await page.goto('/login');
+    await page.fill('#email-input', 'consulta@tms.local');
+    await page.fill('#login-password', 'Consulta@QA2026!Pass');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/tms', { timeout: 15000 });
+
     // 1. Start at /terminal (defaults to dark)
     await page.goto('/terminal');
     const toggleBtn = page.getByTestId('theme-toggle-btn');
@@ -45,4 +52,3 @@ test.describe('Theme Toggle across all screens', () => {
     }
   });
 });
-

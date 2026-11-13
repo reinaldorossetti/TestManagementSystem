@@ -158,30 +158,7 @@ export interface VirtualDatabase {
 
 // Initial seed data — execuções vazias; novos runs reais preenchem via Terminal Ao Vivo.
 const INITIAL_SEED_TEST_FOLDERS: string[] = [
-  "br.com.grupocard.contacard.dev",
-  "br.com.grupocard.contacard.dev/Recarga de Conteúdo",
-  "br.com.grupocard.contacard.dev/Pix",
-  "br.com.grupocard.contacard.dev/Pix/Pix Automático",
-  "br.com.grupocard.contacard.dev/Pagamento de Boleto",
-  "br.com.grupocard.contacard.dev/Consolidado FGTS",
   "br.com.grupocard.contacard.dev/Recarga de telefone",
-  "br.com.grupocard.contacard.dev/Cadastro - Onboarding",
-  "br.com.grupocard.contacard.dev/Calculadora",
-  "br.com.grupocard.contacard.dev/Adicionar Dinheiro",
-  "br.com.grupocard.contacard.dev/Meus Dados",
-  "br.com.grupocard.contacard.dev/Esim",
-  "br.com.grupocard.contacard.dev/Nota fiscal",
-  "br.com.grupocard.contacard.dev/Aprovações de Contrato",
-  "br.com.grupocard.contacard.dev/Transferência P2P",
-  "br.com.grupocard.contacard.dev/Pendências",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/AL DA SORTE",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/Loterias Online",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/PE da Sorte",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/SP da Sorte",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/MS CAP",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/PALPITE DO MILHÃO",
-  "br.com.grupocard.contacard.dev/Sorte e capitalização/FAMILHAO DO HUCK"
 ];
 
 export const INITIAL_DB_SEED: VirtualDatabase = {

@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import type { NextRequest } from 'next/server';
+import { requireWriteAccessResponse } from '@/src/server/http/sessionGuard';
 import { resolveResultsDir } from '@/src/server/robot/resultsPaths';
 import {
   cancelRobotRun,
@@ -58,7 +60,13 @@ function resolveWorkingDirectory(relativeFolder?: string): string | undefined {
  * ATENÇÃO: executa comandos arbitrários na máquina local — destinado apenas a
  * teste/uso local. NÃO expor publicamente sem allowlist + sandbox (ver plano).
  */
-export async function POST(req: Request): Promise<Response> {
+export async function POST(req: NextRequest): Promise<Response> {
+  const denied = await requireWriteAccessResponse(
+    req,
+    'Usuário de consulta não possui permissão para executar testes no Terminal.',
+  );
+  if (denied) return denied;
+
   let body: RunBody;
   try {
     body = (await req.json()) as RunBody;

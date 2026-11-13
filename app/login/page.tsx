@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Cpu, LogIn, Mail, Globe, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Cpu, LogIn, Mail, Globe, AlertTriangle, KeyRound } from 'lucide-react';
 import { PasswordInput } from '@/src/components/auth/PasswordInput';
 import { LockedAccountNotice } from '@/src/components/auth/LockedAccountNotice';
 import { ThemeToggleButton } from '@/src/components/ui/ThemeToggleButton';
@@ -46,8 +46,15 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.data?.user) {
-        // Redireciona com sucesso para o Terminal TMS
-        router.push('/terminal');
+        const nextParam =
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('next')
+            : null;
+        const safeNext =
+          nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+            ? nextParam
+            : '/tms';
+        router.push(safeNext);
         return;
       }
 
@@ -81,16 +88,8 @@ export default function LoginPage() {
       data-theme-base="dark"
       className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col justify-between items-center p-4 sm:p-6 font-sans"
     >
-      {/* Top Bar com Botão Voltar, Tema e Idioma */}
-      <div className="w-full max-w-md flex items-center justify-between py-2">
-        <Link
-          href="/terminal"
-          className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-xl transition-all"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 text-[#FF6600]" />
-          <span>{t('Voltar ao Centro QA', 'Back to QA Center')}</span>
-        </Link>
-
+      {/* Top Bar com Tema e Idioma */}
+      <div className="w-full max-w-md flex items-center justify-end py-2">
         <div className="flex items-center gap-2">
           <ThemeToggleButton theme={theme} onToggle={toggleTheme} t={t} />
           <button
@@ -228,6 +227,23 @@ export default function LoginPage() {
                   {isLoading
                     ? t('Verificando Credenciais...', 'Authenticating...')
                     : t('Entrar no Sistema', 'Sign In')}
+                </span>
+              </button>
+
+              {/* Botão de Atalho para Usuário de Consulta */}
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('consulta@tms.local');
+                  setPassword('Consulta@QA2026!Pass');
+                }}
+                className="w-full bg-slate-950/70 hover:bg-slate-800/80 text-sky-400 hover:text-sky-300 border border-slate-800 hover:border-sky-500/60 py-2.5 px-3 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                title={t('Preencher credenciais do usuário de consulta', 'Fill viewer user credentials')}
+              >
+                <KeyRound className="w-3.5 h-3.5 text-sky-400" />
+                <span>{t('Preencher Usuário Consulta', 'Fill Viewer Credentials')}</span>
+                <span className="text-[10px] text-slate-500 font-normal">
+                  (consulta@tms.local)
                 </span>
               </button>
             </form>

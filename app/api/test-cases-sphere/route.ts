@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { listCases, createCase } from '@/src/server/services/testCaseSphereService';
 import { sphereCreateSchema } from '@/src/server/validation/schemas';
 import { handleRoute, ok, parseBody } from '@/src/server/http/responses';
+import { requireWriteAccessUser } from '@/src/server/http/sessionGuard';
 
 export async function GET() {
   return handleRoute(async () => {
@@ -12,6 +13,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para cadastrar casos de teste.');
     const input = await parseBody(request, sphereCreateSchema);
     const created = await createCase(input);
     return ok(created, 201);

@@ -539,8 +539,14 @@ export const TestRunsWorkspace: React.FC = () => {
             <button
               type="button"
               data-testid="new-test-run-btn"
+              disabled={currentUser?.role === 'viewer'}
               onClick={() => setIsCreatingRun((prev) => !prev)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FF6600] hover:bg-[#e65c00] border border-slate-800 hover:border-sky-500 text-xs font-mono font-black text-white uppercase tracking-wider cursor-pointer transition-all"
+              title={
+                currentUser?.role === 'viewer'
+                  ? t('Usuário de consulta não pode criar ou executar Test Runs', 'Viewer user cannot create or execute Test Runs')
+                  : undefined
+              }
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FF6600] hover:bg-[#e65c00] border border-slate-800 hover:border-sky-500 text-xs font-mono font-black text-white uppercase tracking-wider cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
               <span>{t('Novo Test Run', 'New Test Run')}</span>
@@ -883,8 +889,9 @@ export const TestRunsWorkspace: React.FC = () => {
                         <button
                           type="button"
                           data-testid="include-folder-cases-btn"
+                          disabled={currentUser?.role === 'viewer'}
                           onClick={handleIncludeFolder}
-                          className="px-4 py-2 rounded-xl bg-[#FF6600] hover:bg-[#e65c00] border border-slate-800 hover:border-sky-500 text-xs font-mono font-bold text-white cursor-pointer"
+                          className="px-4 py-2 rounded-xl bg-[#FF6600] hover:bg-[#e65c00] border border-slate-800 hover:border-sky-500 text-xs font-mono font-bold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {t('Incluir Pasta / Feature', 'Include Folder / Feature')}
                         </button>
@@ -903,8 +910,9 @@ export const TestRunsWorkspace: React.FC = () => {
                               <button
                                 type="button"
                                 data-testid="include-selected-cases-btn"
+                                disabled={currentUser?.role === 'viewer'}
                                 onClick={handleIncludeCheckedCases}
-                                className="px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 border border-slate-800 hover:border-sky-400 text-[11px] font-mono font-bold text-white cursor-pointer"
+                                className="px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 border border-slate-800 hover:border-sky-400 text-[11px] font-mono font-bold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {t(
                                   `Incluir Marcados (${checkedCatalogCaseIds.length})`,
@@ -1025,15 +1033,22 @@ export const TestRunsWorkspace: React.FC = () => {
                               <button
                                 type="button"
                                 data-testid={`open-case-result-btn-${rc.sourceTestCaseId}`}
+                                disabled={currentUser?.role === 'viewer'}
                                 onClick={() => openCasePanel(rc)}
-                                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-sky-500 text-xs font-mono font-bold text-sky-400 cursor-pointer"
+                                title={
+                                  currentUser?.role === 'viewer'
+                                    ? t('Usuário de consulta não pode registrar resultados de execução', 'Viewer user cannot record execution results')
+                                    : undefined
+                                }
+                                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-sky-500 text-xs font-mono font-bold text-sky-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {t('Registrar Resultado', 'Record Result')}
                               </button>
 
                               {rc.status === 'Open' &&
                                 (selectedRun.status === 'Draft' ||
-                                  selectedRun.status === 'In Progress') && (
+                                  selectedRun.status === 'In Progress') &&
+                                currentUser?.role !== 'viewer' && (
                                   <button
                                     type="button"
                                     data-testid={`remove-case-btn-${rc.sourceTestCaseId}`}

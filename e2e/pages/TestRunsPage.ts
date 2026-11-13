@@ -28,13 +28,17 @@ export class TestRunsPage extends BasePage {
     await this.page.fill('#email-input', email);
     await this.page.fill('#login-password', password);
     await this.page.click('button[type="submit"]');
-    await this.page.waitForURL('**/terminal', { timeout: 15000 });
+    await this.page.waitForURL(/\/(tms|terminal)/, { timeout: 15000 });
 
     return { email, password };
   }
 
   async navigateToTestRunsFromMenu(): Promise<void> {
-    await this.page.locator('#side-drawer-trigger').click();
+    const drawerTrigger = this.page.locator('#side-drawer-trigger');
+    if (!(await drawerTrigger.isVisible())) {
+      await this.page.goto('/terminal');
+    }
+    await drawerTrigger.click();
     const menuItem = this.page.getByTestId('nav-panel-item-test-runs');
     await expect(menuItem).toBeVisible();
     await menuItem.click();
@@ -96,7 +100,16 @@ export class TestRunsPage extends BasePage {
     if (params.durationS !== undefined) {
       await this.page.getByTestId('result-duration-input').fill(params.durationS);
     }
-    await this.page.getByTestId('save-case-result-btn').click();
+    await Promise.all([
+      this.page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/test-runs/') &&
+          (res.request().method() === 'PATCH' || res.request().method() === 'POST') &&
+          res.ok(),
+        { timeout: 15000 },
+      ),
+      this.page.getByTestId('save-case-result-btn').click(),
+    ]);
   }
 
   async attachLinkEvidenceToActiveCase(url: string, title?: string): Promise<void> {

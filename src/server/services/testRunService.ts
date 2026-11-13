@@ -30,7 +30,7 @@ export interface AuthenticatedTestRunUser {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'analyst' | 'tester' | string;
+  role: 'admin' | 'analyst' | 'tester' | 'viewer' | string;
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -63,6 +63,15 @@ export async function requireTestRunSessionUser(
 
 export class TestRunService {
   constructor(private readonly repo: TestRunRepository = testRunRepository) {}
+
+  private assertWriteAccess(user: AuthenticatedTestRunUser): void {
+    if (user.role === 'viewer') {
+      throw new ApiError(
+        'Usuário de consulta não possui permissão para criar, alterar ou executar Test Runs.',
+        403,
+      );
+    }
+  }
 
   async getCatalogSnapshot(): Promise<{
     projects: CatalogProjectSummary[];
@@ -100,6 +109,7 @@ export class TestRunService {
     input: CreateTestRunInput,
     user: AuthenticatedTestRunUser,
   ): Promise<TestRunRecord> {
+    this.assertWriteAccess(user);
     const project = await this.repo.findCatalogProjectById(input.projectId);
     if (!project) {
       throw new ApiError('Projeto informado não existe no catálogo.', 400, {
@@ -166,6 +176,7 @@ export class TestRunService {
     input: UpdateTestRunInput,
     user: AuthenticatedTestRunUser,
   ): Promise<TestRunRecord> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(id);
 
     if (run.status === 'Completed' || run.status === 'Aborted') {
@@ -241,6 +252,7 @@ export class TestRunService {
     addedCount: number;
     skippedDuplicates: string[];
   }> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
     if (run.status === 'Completed' || run.status === 'Aborted') {
       throw new ApiError(
@@ -360,6 +372,7 @@ export class TestRunService {
     sourceTestCaseId: string,
     user: AuthenticatedTestRunUser,
   ): Promise<TestRunRecord> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
     if (run.status !== 'Draft' && run.status !== 'In Progress') {
       throw new ApiError(
@@ -395,6 +408,7 @@ export class TestRunService {
   }
 
   async startRun(runId: string, user: AuthenticatedTestRunUser): Promise<TestRunRecord> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
     const now = new Date().toISOString();
 
@@ -439,6 +453,7 @@ export class TestRunService {
     input: TestRunResultInput,
     user: AuthenticatedTestRunUser,
   ): Promise<TestRunRecord> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
 
     if (run.status === 'Completed' || run.status === 'Aborted') {
@@ -501,6 +516,7 @@ export class TestRunService {
     params: { url: string; title?: string },
     user: AuthenticatedTestRunUser,
   ): Promise<{ evidence: TestRunEvidenceRecord; run: TestRunRecord }> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
     if (run.status === 'Completed' || run.status === 'Aborted') {
       throw new ApiError(
@@ -563,6 +579,7 @@ export class TestRunService {
     },
     user: AuthenticatedTestRunUser,
   ): Promise<{ evidence: TestRunEvidenceRecord; run: TestRunRecord }> {
+    this.assertWriteAccess(user);
     const run = await this.getRunById(runId);
     if (run.status === 'Completed' || run.status === 'Aborted') {
       throw new ApiError(

@@ -1,5 +1,7 @@
+import type { NextRequest } from 'next/server';
 import { getExecution, removeExecution } from '@/src/server/services/executionService';
 import { ApiError, handleRoute, ok } from '@/src/server/http/responses';
+import { requireWriteAccessUser } from '@/src/server/http/sessionGuard';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,8 +18,9 @@ export async function GET(_request: Request, { params }: RouteContext) {
   });
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para excluir execuções.');
     const { id } = await params;
     await removeExecution(id);
     return ok({ id });

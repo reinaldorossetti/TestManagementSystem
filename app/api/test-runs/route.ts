@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { handleRoute, ok } from '@/src/server/http/responses';
+import { requireWriteAccessUser } from '@/src/server/http/sessionGuard';
 import { parseTestRunBody } from '@/src/server/http/testRunHttp';
 import {
   requireTestRunSessionUser,
@@ -28,7 +29,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
-    const user = await requireTestRunSessionUser(request);
+    const user = await requireWriteAccessUser(
+      request,
+      'Usuário de consulta não possui permissão para criar ou executar Test Runs.',
+    );
     const body = await parseTestRunBody(request, createTestRunSchema);
     const run = await testRunService.createRun(body, user);
     return ok(run, 201);

@@ -116,6 +116,8 @@ export const TestRunShellHeader: React.FC<TestRunShellHeaderProps> = ({
                     ? 'bg-purple-950/80 border-purple-500/50 text-purple-300'
                     : currentUser.role === 'analyst'
                     ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
+                    : currentUser.role === 'viewer'
+                    ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
                     : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
                 }`}
               >

@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { DbExecution, VirtualDatabase, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
 import { createTranslator } from '../utils/i18n';
 import { handleExportExecutionReportToPDF } from '../utils/pdfExporter';
+import { useCurrentUser } from '../hooks/useCurrentUser';
 import { 
   Calendar, 
   Clock, 
@@ -77,6 +78,7 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, onLoa
   // Toast notifications or clipboard copy indicators
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [isLoadingLatestRobotReport, setIsLoadingLatestRobotReport] = useState(false);
+  const { isViewer } = useCurrentUser();
 
   const handleLoadLatestRobotReport = async () => {
     if (!onLoadLatestRobotReport || isLoadingLatestRobotReport) return;
@@ -1081,8 +1083,11 @@ export function ExecutionReports({ sqliteDb, onClearHistory, onRunFeature, onLoa
           </p>
           {onRunFeature && (
             <button
+              type="button"
+              disabled={isViewer}
               onClick={onRunFeature}
-              className="mt-4 px-4 py-2 bg-[#FF6600] hover:bg-[#E05300] text-xs font-bold text-white rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-[#FF6600]/15"
+              title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : undefined}
+              className="mt-4 px-4 py-2 bg-[#FF6600] hover:bg-[#E05300] text-xs font-bold text-white rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-[#FF6600]/15 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <PlayCircle className="w-4 h-4" />
               {t("Executar Feature Completa Agora", "Run Full Feature Now")}

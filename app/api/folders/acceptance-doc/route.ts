@@ -13,6 +13,7 @@ import {
   folderAcceptanceDocUpdateSchema,
 } from '@/src/server/validation/schemas';
 import { handleRoute, ok, parseBody, ApiError } from '@/src/server/http/responses';
+import { requireWriteAccessUser } from '@/src/server/http/sessionGuard';
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para importar critérios de aceite.');
     const formData = await request.formData();
     const folderPath = String(formData.get('folderPath') ?? '').trim();
     const file = formData.get('file');
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para editar critérios de aceite.');
     const folderPath = request.nextUrl.searchParams.get('folderPath')?.trim();
     if (folderPath) {
       const body = await parseBody(request, folderAcceptanceDocUpdateSchema);
@@ -80,6 +83,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para excluir critérios de aceite.');
     const folderPath = request.nextUrl.searchParams.get('folderPath')?.trim();
     if (!folderPath) {
       throw new ApiError('Parâmetro folderPath é obrigatório.', 400);

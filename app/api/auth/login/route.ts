@@ -11,12 +11,16 @@ export async function POST(request: NextRequest) {
 
     const { user, rawToken, expiresAt } = await authService.login(body, ipAddress, userAgent);
 
+    const isHttps =
+      request.nextUrl.protocol === 'https:' ||
+      request.headers.get('x-forwarded-proto') === 'https';
+
     const response = NextResponse.json({ data: { user } }, { status: 200 });
     response.cookies.set({
       name: 'tms_session',
       value: rawToken,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'strict',
       path: '/',
       expires: expiresAt,

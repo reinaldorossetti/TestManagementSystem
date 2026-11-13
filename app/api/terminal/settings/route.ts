@@ -1,4 +1,6 @@
+import type { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { requireWriteAccessResponse } from '@/src/server/http/sessionGuard';
 import {
   getRobotResultsDirectory,
   setRobotResultsDirectory,
@@ -23,7 +25,13 @@ export async function GET(): Promise<Response> {
   }
 }
 
-export async function PUT(request: Request): Promise<Response> {
+export async function PUT(request: NextRequest): Promise<Response> {
+  const denied = await requireWriteAccessResponse(
+    request,
+    'Usuário de consulta não possui permissão para alterar configurações do sistema.',
+  );
+  if (denied) return denied;
+
   try {
     const body = settingsSchema.parse(await request.json());
     const resultsDirectory = await setRobotResultsDirectory(body.resultsDirectory);

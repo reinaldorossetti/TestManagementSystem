@@ -244,6 +244,8 @@ export const AdminUserManagementModal: React.FC<AdminUserManagementModalProps> =
                                 ? 'bg-purple-950/60 border-purple-500/50 text-purple-300'
                                 : u.role === 'analyst'
                                 ? 'bg-sky-950/60 border-sky-500/50 text-sky-300'
+                                : u.role === 'viewer'
+                                ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
                                 : 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
                             }`}
                           >

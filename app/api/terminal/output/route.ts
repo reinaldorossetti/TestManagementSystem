@@ -1,5 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import type { NextRequest } from 'next/server';
+import { requireWriteAccessResponse } from '@/src/server/http/sessionGuard';
 import { isPlausibleResultsFolderName } from '@/src/utils/robotResultsFolder';
 import {
   resolveOutputXmlPath,
@@ -76,7 +78,13 @@ async function findLatestRobotOutput(): Promise<RobotOutputSource | null> {
  * (results/<runId>/output.xml), faz o parse para o modelo relacional do TMS e
  * devolve { execution, testCases, steps } para o cliente persistir no banco.
  */
-export async function POST(req: Request): Promise<Response> {
+export async function POST(req: NextRequest): Promise<Response> {
+  const denied = await requireWriteAccessResponse(
+    req,
+    'Usuário de consulta não possui permissão para registrar execuções de testes.',
+  );
+  if (denied) return denied;
+
   let body: OutputBody;
   try {
     body = (await req.json()) as OutputBody;

@@ -14,6 +14,7 @@ import {
 } from '../utils/robotExecutionProgress';
 import type { DbExecution, DbTestCase, DbStepLog } from '../utils/sqliteEngine';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { useCurrentUser } from '../hooks/useCurrentUser';
 
 const DARK_XTERM_THEME = {
   background: '#0f172a',
@@ -76,6 +77,7 @@ const formatTimestamp = (): string => new Date().toISOString().slice(0, 19).repl
  */
 export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onClearExecutions }: LiveTerminalProps) {
   const t = createTranslator(language);
+  const { isViewer } = useCurrentUser();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -290,14 +292,18 @@ export function LiveTerminal({ language = 'PT', initialCommand, onPersisted, onC
       <div className="bg-slate-950/40 px-4 py-2.5 border-b border-slate-800 flex items-center gap-2 flex-wrap">
         <button
           type="button"
-          disabled={isRunning}
+          disabled={isRunning || isViewer}
           onClick={() => runCommand(ROBOT_RUN_ALL_COMMAND)}
           data-testid="terminal-run-all-button"
           className="flex items-center gap-1.5 bg-[#FF6600]/10 hover:bg-[#FF6600]/20 text-[#FF6600] font-black text-[10px] uppercase tracking-wide px-3 py-1.5 rounded-lg border border-[#FF6600]/30 hover:border-[#FF6600] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          title={t(
-            'Executa todas as suítes Robot em test_projects/ (login_tests + tms)',
-            'Runs all Robot suites in test_projects/ (login_tests + tms)',
-          )}
+          title={
+            isViewer
+              ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests')
+              : t(
+                  'Executa todas as suítes Robot em test_projects/ (login_tests + tms)',
+                  'Runs all Robot suites in test_projects/ (login_tests + tms)',
+                )
+          }
         >
           <Play className="w-3 h-3 fill-current" />
           {t('Executar Todos os Testes', 'Run All Tests')}

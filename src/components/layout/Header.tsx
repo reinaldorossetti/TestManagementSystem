@@ -14,7 +14,7 @@ interface AuthUser {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'analyst' | 'tester';
+  role: 'admin' | 'analyst' | 'tester' | 'viewer';
   status: string;
 }
 
@@ -60,9 +60,9 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
       setCurrentUser(null);
-      window.location.reload();
+      window.location.assign('/login');
     } catch {
-      window.location.href = '/login';
+      window.location.assign('/login');
     }
   };
 
@@ -97,6 +97,8 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-purple-950/80 border-purple-500/50 text-purple-300'
                     : currentUser.role === 'analyst'
                     ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
+                    : currentUser.role === 'viewer'
+                    ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
                     : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
                 }`}
               >

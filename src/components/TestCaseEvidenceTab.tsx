@@ -13,6 +13,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { apiClient, ApiClientError } from '@/src/lib/api/client';
+import { useCurrentUser } from '@/src/hooks/useCurrentUser';
 import type { DbTestCaseEvidenceBundle, DbTestCaseEvidenceItem } from '@/src/utils/sqliteEngine';
 
 interface TestCaseEvidenceTabProps {
@@ -30,6 +31,7 @@ const SOURCE_LABELS: Record<string, { pt: string; en: string }> = {
 };
 
 export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps) {
+  const { isViewer } = useCurrentUser();
   const [bundle, setBundle] = useState<DbTestCaseEvidenceBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -130,11 +132,10 @@ export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps)
           </span>
           {latest && (
             <span
-              className={`rounded-md px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${
-                latest.source === 'automated'
+              className={`rounded-md px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${latest.source === 'automated'
                   ? 'bg-emerald-100 text-emerald-700'
                   : 'bg-sky-100 text-sky-700'
-              }`}
+                }`}
             >
               {tr(t, SOURCE_LABELS[latest.source]?.pt ?? latest.source, SOURCE_LABELS[latest.source]?.en ?? latest.source)}
             </span>
@@ -165,11 +166,10 @@ export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps)
           <button
             type="button"
             onClick={() => setMode('file')}
-            className={`flex-1 rounded-xl border py-2 text-[11px] font-mono font-bold transition-colors ${
-              mode === 'file'
+            className={`flex-1 rounded-xl border py-2 text-[11px] font-mono font-bold transition-colors ${mode === 'file'
                 ? 'border-sky-500 bg-sky-50 text-sky-700'
                 : 'border-slate-200 text-slate-600 hover:border-sky-400'
-            }`}
+              }`}
           >
             <Upload className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
             {tr(t, 'Arquivo', 'File')}
@@ -177,11 +177,10 @@ export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps)
           <button
             type="button"
             onClick={() => setMode('link')}
-            className={`flex-1 rounded-xl border py-2 text-[11px] font-mono font-bold transition-colors ${
-              mode === 'link'
+            className={`flex-1 rounded-xl border py-2 text-[11px] font-mono font-bold transition-colors ${mode === 'link'
                 ? 'border-sky-500 bg-sky-50 text-sky-700'
                 : 'border-slate-200 text-slate-600 hover:border-sky-400'
-            }`}
+              }`}
           >
             <Link2 className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
             {tr(t, 'Link', 'Link')}
@@ -254,11 +253,10 @@ export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps)
                       {item.label || item.title}
                     </span>
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase ${
-                        item.source === 'automated'
+                      className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase ${item.source === 'automated'
                           ? 'bg-emerald-100 text-emerald-700'
                           : 'bg-sky-100 text-sky-700'
-                      }`}
+                        }`}
                     >
                       {tr(t, SOURCE_LABELS[item.source]?.pt ?? item.source, SOURCE_LABELS[item.source]?.en ?? item.source)}
                     </span>
@@ -271,9 +269,10 @@ export function TestCaseEvidenceTab({ testCaseId, t }: TestCaseEvidenceTabProps)
                     {item.source === 'manual' && (
                       <button
                         type="button"
+                        disabled={isViewer}
                         onClick={() => void handleDelete(item)}
-                        className="rounded-lg border border-slate-200 p-1 text-red-500 hover:border-red-400"
-                        title={tr(t, 'Excluir', 'Delete')}
+                        className="rounded-lg border border-slate-200 p-1 text-red-500 hover:border-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isViewer ? tr(t, 'Usuário de consulta não pode excluir evidências', 'Viewer user cannot delete evidences') : tr(t, 'Excluir', 'Delete')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -340,9 +339,8 @@ function EvidencePreview({
       <img
         src={item.preview_url}
         alt={item.title}
-        className={`max-w-full rounded-xl border border-slate-200 object-contain bg-slate-950/5 ${
-          large ? 'max-h-96' : 'max-h-36'
-        }`}
+        className={`max-w-full rounded-xl border border-slate-200 object-contain bg-slate-950/5 ${large ? 'max-h-96' : 'max-h-36'
+          }`}
       />
     </a>
   );

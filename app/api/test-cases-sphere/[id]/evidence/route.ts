@@ -6,6 +6,7 @@ import {
 } from '@/src/server/services/testCaseEvidenceService';
 import { testCaseEvidenceLinkSchema } from '@/src/server/validation/schemas';
 import { handleRoute, ok, parseBody, ApiError } from '@/src/server/http/responses';
+import { requireWriteAccessUser } from '@/src/server/http/sessionGuard';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,6 +22,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
   return handleRoute(async () => {
+    await requireWriteAccessUser(request, 'Usuário de consulta não possui permissão para anexar evidências.');
     const { id } = await params;
     const contentType = request.headers.get('content-type') ?? '';
 

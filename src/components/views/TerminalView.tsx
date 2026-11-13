@@ -4,18 +4,19 @@
  */
 
 import React from 'react';
-import { 
-  ClipboardCheck, 
-  CheckCircle2, 
-  XCircle, 
-  Terminal as TerminalIcon, 
-  Sparkles, 
-  Play, 
-  ExternalLink 
+import {
+  ClipboardCheck,
+  CheckCircle2,
+  XCircle,
+  Terminal as TerminalIcon,
+  Sparkles,
+  Play,
+  ExternalLink
 } from 'lucide-react';
 import { LiveTerminal } from '../LiveTerminal';
 import { LoggedStep } from '../LoggedStep';
 import type { DbExecution, DbTestCase, DbStepLog } from '../../utils/sqliteEngine';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 interface TerminalLogEntry {
   id: string;
@@ -49,6 +50,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   language,
   t,
 }) => {
+  const { isViewer } = useCurrentUser();
   return (
     <div className="flex-1 flex flex-col min-h-0 gap-5">
       {/* Upper Terminal Controls */}
@@ -76,9 +78,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             <button
               type="button"
               onClick={() => handleRunFeatureReal()}
-              disabled={isExecutingFeature}
+              disabled={isExecutingFeature || isViewer}
               data-testid="terminal-run-feature-button"
-              className="bg-[#FF6600] hover:bg-[#E05500] text-white font-extrabold px-4 py-1.5 rounded-lg text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-[#FF6600]/20 disabled:opacity-50 cursor-pointer"
+              title={isViewer ? t('Usuário de consulta não pode executar testes', 'Viewer user cannot execute tests') : undefined}
+              className="bg-[#FF6600] hover:bg-[#E05500] text-white font-extrabold px-4 py-1.5 rounded-lg text-xs transition-colors font-mono flex items-center gap-1.5 shadow-md shadow-[#FF6600]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               {isExecutingFeature ? t("Executando...", "Executing...") : t("Executar Feature", "Execute Feature")}
@@ -138,8 +141,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 if (log.mode === 'header') colorStyle = 'text-white font-extrabold bg-slate-950 py-0.5 px-1 rounded block mt-2 text-center border-y border-slate-800';
 
                 return (
-                  <div 
-                    key={log.id} 
+                  <div
+                    key={log.id}
                     className={`whitespace-pre-wrap leading-relaxed ${colorStyle}`}
                   >
                     {log.text.includes('Step  |') ? <LoggedStep text={log.text} /> : log.text}

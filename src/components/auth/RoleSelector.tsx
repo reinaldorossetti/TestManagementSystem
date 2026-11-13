@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Shield, FileCheck, CheckCircle2 } from 'lucide-react';
+import { Shield, FileCheck, CheckCircle2, Eye } from 'lucide-react';
 import type { UserRole } from '@/src/server/validation/authSchemas';
 
 interface RoleSelectorProps {
@@ -20,6 +20,17 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
   const t = (pt: string, en: string) => (language === 'PT' ? pt : en);
 
   const roles = [
+    {
+      id: 'viewer' as UserRole,
+      title: t('Consulta (Somente Leitura)', 'Viewer (Read-Only)'),
+      badge: 'VIEWER',
+      badgeClass: 'bg-amber-950/60 border-amber-500/50 text-amber-300',
+      description: t(
+        'Visualização de casos, relatórios e histórico sem permissão de cadastro ou execução.',
+        'Read-only access to test cases, reports, and history without registration or execution.'
+      ),
+      icon: Eye,
+    },
     {
       id: 'tester' as UserRole,
       title: t('Tester (Operador)', 'Tester (Operator)'),
@@ -61,7 +72,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
         {t('Selecione seu Perfil de Acesso (RBAC):', 'Select your Access Role (RBAC):')}
       </label>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         {roles.map((r) => {
           const isSelected = selectedRole === r.id;
           const Icon = r.icon;
