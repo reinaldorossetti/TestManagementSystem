@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : currentUser.role === 'analyst'
                     ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
                     : currentUser.role === 'viewer'
-                    ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                    ? 'bg-amber-100 border-amber-300 text-amber-800'
                     : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
                 }`}
               >
